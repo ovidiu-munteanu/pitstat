@@ -9,7 +9,7 @@ import java.util.ListIterator;
 
 public class App {
 
-    private final String repoPath = "D:/X/_projects/idea/MavenTest";
+    private final String repoPath = "D:/X/projIdea/MavenTest";
 
     private final String gitCommand = "git <gitOptions> diff <diffOptions> HEAD~ HEAD";
 
@@ -42,19 +42,15 @@ public class App {
         int commandStandardOutputLines = app.commandExecutor.getStandardOutputLines();
         int commandStandardErrorLines = app.commandExecutor.getStandardErrorLines();
 
-
-        //System.out.println("$ " + command);
         System.out.println(commandStandardOutput);
 
-
         String modifiedFiles = commandStandardOutput.replaceAll("M\\s+", "");
-
         app.modifiedFilesList = Arrays.asList(modifiedFiles.split("\\n"));
 
         int index = 0;
 
         for (String fileName : app.modifiedFilesList) {
-            System.out.println("\nModified file " + ++index + ": " + fileName);
+            System.out.println("Modified file " + ++index + ": " + fileName);
 
             List<String> mapFileLines = Files.readAllLines(Paths.get(app.repoPath, fileName), StandardCharsets.UTF_8);
             int mapFilePointer = 1;
@@ -165,9 +161,10 @@ public class App {
             }
 
 
-//            System.out.println(String.join("\n", diffOutputLines));
+            System.out.println(String.join("\n", diffOutputLines));
+            System.out.println();
 
-
+            // Include map output line numbers
 //            mapFileIterator = mapFileLines.listIterator();
 //            int lineNo = 0;
 //            while (mapFileIterator.hasNext()) {
@@ -175,7 +172,9 @@ public class App {
 //                mapFileIterator.set(String.format(format, ++lineNo) + ":  " + mapFileLine);
 //            }
 
+            System.out.println("OLD :  NEW :  Mapping:");
             System.out.println(String.join("\n", mapFileLines));
+            System.out.println();
 
 
         }
