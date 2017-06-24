@@ -164,8 +164,6 @@ public class App {
                 newFilePointer++;
             }
 
-            //    System.out.println(mapFilePointer);
-
 
 //            System.out.println(String.join("\n", diffOutputLines));
 
