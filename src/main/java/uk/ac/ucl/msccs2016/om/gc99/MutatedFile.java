@@ -34,6 +34,10 @@ class MutatedFile {
         String description;
 
         String changeStatus;
+
+        Mutation(){
+            changeStatus = null;
+        }
     }
 
     static class KillingTest {

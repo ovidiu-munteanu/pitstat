@@ -22,17 +22,27 @@ interface Worker {
     String ANSI_WHITE_BG = "\u001B[47m";
 
 
+    String pomFile = "pom.xml";
+    String pitMutationsFile = "mutations.xml";
 
-    String gitGetCurrentBranchCommand = "git <gitOptions> rev-parse --abbrev-ref HEAD";
+    String gitOptionsPlaceholder = "<gitOptions>";
 
-    String gitCheckoutBranchCommand = "git <gitOptions> checkout <checkoutOptions> ";
+    String gitRevListCommand = "git <gitOptions> rev-list <revListOptions> ";
+    String revListAllOption = " --all ";
+
+    String gitRevParseCommand = "git <gitOptions> rev-parse <revParseOptions> ";
+    String revParseOptionAbbrevRef = " --abbrev-ref ";
+
+    String gitCheckoutCommand = "git <gitOptions> checkout <checkoutOptions> ";
     String checkoutOptionNewBranch = " -b ";
 
     String gitBranchCommand = "git <gitOptions> branch <branchOptions> ";
     String branchDeleteOption = " -D ";
     String branchForceOption = " -f ";
 
-    String gitRevParseCommand = "git <gitOptions> rev-parse ";
+    String gitResetCommand  ="git <gitOptions> reset <resetOptions> ";
+    String resetHardOption =  " --hard ";
+    String parentCommit = " HEAD~ ";
 
     String gitDiffCommand = "git <gitOptions> diff <diffOptions> <oldCommit> <oldFile> <newCommit> <newFileName>";
 

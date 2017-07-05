@@ -1,7 +1,6 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
 
@@ -19,8 +18,8 @@ class CommandExecutor {
      * @param command string containing the command to be executed
      * @return return error code; 0 (zero) if no error
      */
-    int executeCommand(String command) {
-        return executeCommand(command, false);
+    int execute(String command) {
+        return execute(command, false);
     }
 
     /**
@@ -29,7 +28,7 @@ class CommandExecutor {
      *                     true if the command should be printed out, false othewise
      * @return return error code; 0 (zero) if no error
      */
-    int executeCommand(String command, boolean printCommand) {
+    int execute(String command, boolean printCommand) {
         if (command == null) {
             throw new NullPointerException("Command string is null.");
         } else if (command.length() == 0) {
@@ -38,17 +37,7 @@ class CommandExecutor {
 
         this.splitCommand = splitCommand(command);
         this.printCommand = printCommand;
-        return executeCommand();
-    }
-
-    /**
-     * Passed as argument to CommandExecutor; splits command string into individual command components
-     *
-     * @param command String containing the command to be executed
-     * @return ArrayList of strings containing the command components
-     */
-    static List<String> splitCommand(String command) {
-        return Arrays.asList(command.split("\\s+"));
+        return execute();
     }
 
     /**
@@ -68,7 +57,7 @@ class CommandExecutor {
     /**
      * @return
      */
-    private int executeCommand() {
+    private int execute() {
         int exitValue;
 
         if (printCommand)
@@ -104,6 +93,15 @@ class CommandExecutor {
         return exitValue;
     }
 
+    /**
+     * Passed as argument to CommandExecutor; splits command string into individual command components
+     *
+     * @param command String containing the command to be executed
+     * @return ArrayList of strings containing the command components
+     */
+    private static List<String> splitCommand(String command) {
+        return Arrays.asList(command.split("\\s+"));
+    }
 }
 
 

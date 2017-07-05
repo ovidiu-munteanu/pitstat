@@ -1,10 +1,6 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
-import org.apache.maven.shared.invoker.DefaultInvocationRequest;
-import org.apache.maven.shared.invoker.DefaultInvoker;
-import org.apache.maven.shared.invoker.InvocationRequest;
-import org.apache.maven.shared.invoker.InvocationResult;
-import org.apache.maven.shared.invoker.Invoker;
+import org.apache.maven.shared.invoker.*;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -33,7 +29,10 @@ import java.util.NoSuchElementException;
 class MainWorker implements Worker {
 
     private final CommandExecutor commandExecutor;
-    private final Invoker mvnInvoker;
+    private final Invoker mavenInvoker;
+    private final InvocationRequest invocationRequest;
+    private final JSONHandler jsonHandler;
+    private final DocumentBuilder documentBuilder;
 
     private String repoPath;
     private String pitReportsPath;
@@ -44,17 +43,20 @@ class MainWorker implements Worker {
     private String originalGitBranch;
     private String pitStatBranch;
 
-    private String oldCommit;
     private String newCommit;
+    private String oldCommit;
+    private String newCommitHash;
+    private String oldCommitHash;
+
 
     private String startTime;
+    private String outputTime;
 
-    private JSONHandler jsonHandler;
 
+    MainWorker(String repoPath, String oldCommit, String newCommit, String pitReportPath, boolean pitReportsPathRelative)
+            throws Exception {
 
-    MainWorker(String repoPath, String oldCommit, String newCommit, String pitReportPath, boolean pitReportsPathRelative) {
-
-        this.startTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        startTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
         this.repoPath = repoPath;
         this.oldCommit = oldCommit;
@@ -62,35 +64,77 @@ class MainWorker implements Worker {
         this.pitReportsPath = pitReportPath;
         this.pitReportsPathRelative = pitReportsPathRelative;
 
-        this.commandExecutor = new CommandExecutor();
-        this.mvnInvoker = new DefaultInvoker();
+        commandExecutor = new CommandExecutor();
 
-        this.jsonHandler = new JSONHandler<>();
+        mavenInvoker = new DefaultInvoker();
+
+        invocationRequest = new DefaultInvocationRequest();
+        invocationRequest.setPomFile(new File(Paths.get(repoPath, pomFile).toString()));
+        invocationRequest.setGoals(Arrays.asList(mvnGoalTest, mvnGoalPitest));
+        invocationRequest.setBatchMode(true);
+
+        documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+
+        jsonHandler = new JSONHandler<>();
     }
 
 
-    @SuppressWarnings("unchecked")
     void doWork() throws Exception {
 
-//        this.originalGitBranch = getGitBranch();
-//        this.pitStatBranch = checkoutPitStatBranch();
+        this.originalGitBranch = getGitBranch(newCommit);
+        this.pitStatBranch = checkoutPitStatBranch();
+
+        List<String> commitsList = getCommitsList();
+        String initialCommitHash = commitsList.get(commitsList.size() - 1);
+
+        boolean outputFolderCreated = false;
+        boolean isInitialCommit;
+
+        int rollbacks = 0;
+
+        do {
+
+            System.out.println("rollback: " + rollbacks);
+
+            newCommitHash = getCommitHash(newCommit);
+            oldCommitHash = getCommitHash(oldCommit);
+
+            isInitialCommit = newCommitHash.equals(initialCommitHash);
+
+            System.out.println("New commit hash: " + newCommitHash);
+            System.out.println("Old commit hash: " + oldCommitHash);
+            System.out.println();
+
+            if (!outputFolderCreated) {
+                int createOutputFolderResult = createOutputFolder();
+                if (createOutputFolderResult != 0) System.exit(createOutputFolderResult);
+                outputFolderCreated = true;
+            }
+
+
+            runPitMutationTesting();
+
+
+            if (!isInitialCommit) runGitDiff();
+
+
+            if (!isInitialCommit) {
+                rollBack(parentCommit);
+                rollbacks++;
+            }
+        } while (!isInitialCommit);
 
 //        checkoutOriginalBranch();
 //        deletePitStatBranch();
 
-        String oldCommitHash = getCommitHash(oldCommit);
-        String newCommitHash = getCommitHash(newCommit);
+    }
 
-        System.out.println("Old commit hash: " + oldCommitHash);
-        System.out.println("New commit hash: " + newCommitHash);
-        System.out.println();
 
+    @SuppressWarnings("unchecked")
+    private void runGitDiff() throws Exception {
 
         // git diff name-status between previous and current commit
         List<String> nameStatusList = gitDiffNameStatus();
-
-        int createOutputFolderResult = createOutputFolder();
-        if (createOutputFolderResult != 0) System.exit(createOutputFolderResult);
 
         int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
         HashMap<String, ChangedFile> changedFiles = new HashMap<>(hashMapCapacity);
@@ -283,50 +327,7 @@ class MainWorker implements Worker {
                     newFileLinePointer++;
                 }
 
-//  The following section of code deals only with printing out the map file
-
-                // Calculate number of characters to use in formatting of line number based on number of lines in file
-                // i.e. number of characters = 1 + digits in number of lines
-                int digitsNo = Math.max(4, 1 + Integer.toString(mapFileLines.size()).length());
-                String format = "%-" + digitsNo + "d";
-
-                String paddingSpaces = String.join("", Collections.nCopies(digitsNo - 3, " "));
-
-                System.out.println("Mapping of line changes:");
-                System.out.println("OLD" + paddingSpaces + ": NEW" + paddingSpaces + ":");
-
-//                int lineNo = 0;
-
-                for (String mapLine : mapFileLines) {
-
-                    int oldLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
-                    String oldLineIndicator = oldLineNo == 0 ? "N/E" + paddingSpaces : String.format(format, oldLineNo);
-
-                    mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
-
-                    int newLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
-                    String newLineIndicator = newLineNo == 0 ? "DEL" + paddingSpaces : String.format(format, newLineNo);
-
-                    mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
-
-                    mapLine = oldLineIndicator + ": " + newLineIndicator + ": " + mapLine;
-
-                    // add line colour, i.e. green if added line, red if deleted line
-                    if (oldLineNo == 0) {
-                        mapLine = ANSI_GREEN + mapLine + ANSI_RESET;
-                    } else if (newLineNo == 0) {
-                        mapLine = ANSI_RED + mapLine + ANSI_RESET;
-                    }
-
-                    // TODO Decide whether to include map output line numbers
-//                    String mapLineIndicator = String.format(format, ++lineNo);
-//                    mapLine = mapLineIndicator + ": " + mapLine;
-
-                    System.out.println(mapLine);
-                }
-                System.out.println();
-
-// End of printing out section of code
+                printOutDiffMap(mapFileLines);
 
             } else {
 
@@ -345,44 +346,88 @@ class MainWorker implements Worker {
 
         System.out.println("Modified files: " + nameStatusList.size() + "\n");
 
-
-// Write output file with results of git diff
-
-        String outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-
-        String diffOutputFileName = diffOutputBaseFileName.replace("<date-hash>", outputTime + "-" + newCommitHash);
-
-        Path diffOutputPath = Paths.get(outputPath, diffOutputFileName);
         DiffOutput diffOutput = new DiffOutput(oldCommitHash, newCommitHash, changedFiles);
 
-        jsonHandler.saveToJSON(diffOutput, diffOutputPath.toString());
+
+        // Write output file with results of git diff
+        String diffOutputFileName = diffOutputBaseFileName.replace("<date-hash>", outputTime + "-" + newCommitHash);
+        String diffOutputPath = Paths.get(outputPath, diffOutputFileName).toString();
 
 
-// run Pit Mutation Testing on current commit
+        jsonHandler.saveToJSON(diffOutput, diffOutputPath);
 
-        InvocationRequest request = new DefaultInvocationRequest();
-        request.setPomFile(new File(repoPath + "/pom.xml"));
-        request.setGoals(Arrays.asList(mvnGoalTest, mvnGoalPitest));
-        request.setBatchMode(true);
+    }
 
-        InvocationResult result = mvnInvoker.execute(request);
 
-        if (result.getExitCode() != 0)
+    private void printOutDiffMap(List<String> mapFileLines) {
+
+        // Calculate number of characters to use in formatting of line number based on number of lines in file
+        // i.e. number of characters = 1 + digits in number of lines
+        int digitsNo = Math.max(4, 1 + Integer.toString(mapFileLines.size()).length());
+        String format = "%-" + digitsNo + "d";
+
+        String paddingSpaces = String.join("", Collections.nCopies(digitsNo - 3, " "));
+
+        System.out.println("Mapping of line changes:");
+        System.out.println("OLD" + paddingSpaces + ": NEW" + paddingSpaces + ":");
+
+//        int lineNo = 0;
+
+        for (String mapLine : mapFileLines) {
+
+            int oldLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
+            String oldLineIndicator = oldLineNo == 0 ? "N/E" + paddingSpaces : String.format(format, oldLineNo);
+
+            mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
+
+            int newLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
+            String newLineIndicator = newLineNo == 0 ? "DEL" + paddingSpaces : String.format(format, newLineNo);
+
+            mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
+
+            mapLine = oldLineIndicator + ": " + newLineIndicator + ": " + mapLine;
+
+            // add line colour, i.e. green if added line, red if deleted line
+            if (oldLineNo == 0) {
+                mapLine = ANSI_GREEN + mapLine + ANSI_RESET;
+            } else if (newLineNo == 0) {
+                mapLine = ANSI_RED + mapLine + ANSI_RESET;
+            }
+
+            // TODO Decide whether to include map output line numbers
+//            String mapLineIndicator = String.format(format, ++lineNo);
+//            mapLine = mapLineIndicator + ": " + mapLine;
+
+            System.out.println(mapLine);
+        }
+
+        System.out.println();
+
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private void runPitMutationTesting() throws Exception {
+
+        InvocationResult result = mavenInvoker.execute(invocationRequest);
+
+        if (result.getExitCode() != 0) {
             if (result.getExecutionException() != null) {
                 throw new Exception("Maven invocation failed.", result.getExecutionException());
             } else {
                 throw new Exception("Maven invocation failed. Exit code: " + result.getExitCode());
             }
+        }
 
+        System.out.println("\n");
 
-        Path latestPitReportPath = getLatestPitReportPath(pitReportsPath, pitReportsPathRelative);
+        // Path latestPitReportPath = getLatestPitReportPath(pitReportsPath, pitReportsPathRelative);
+        String pitMutationsReport = Paths.get((pitReportsPathRelative ? repoPath : ""), pitReportsPath, pitMutationsFile).toString();
 
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document doc = builder.parse(new File(latestPitReportPath.resolve("mutations.xml").toString()));
+        Document doc = documentBuilder.parse(new File(pitMutationsReport));
         NodeList mutationsList = doc.getElementsByTagName("mutation");
 
-        hashMapCapacity = (int) (mutationsList.getLength() * 1.3);
+        int hashMapCapacity = (int) (mutationsList.getLength() * 1.3);
         HashMap<String, MutatedFile> mutatedFiles = new HashMap<>(hashMapCapacity);
 
         for (int i = 0; i < mutationsList.getLength(); ++i) {
@@ -412,11 +457,11 @@ class MainWorker implements Worker {
             } else {
                 mutatedFile = new MutatedFile();
 
-                if (changedFiles.containsKey(mutatedFileName)) {
-                    mutatedFile.changeType = changedFiles.get(mutatedFileName).changeType;
-                } else {
-                    mutatedFile.changeType = "UNCHANGED";
-                }
+//                if (changedFiles.containsKey(mutatedFileName)) {
+//                    mutatedFile.changeType = changedFiles.get(mutatedFileName).changeType;
+//                } else {
+//                    mutatedFile.changeType = "UNCHANGED";
+//                }
             }
 
             MutatedFile.MutatedClass mutatedClass;
@@ -453,22 +498,16 @@ class MainWorker implements Worker {
             }
 
 
-            if (mutatedFile.changeType.equals("UNCHANGED")) {
-
-                mutation.changeStatus = "UNCHANGED";
-
-            } else if ("AC".contains(mutatedFile.changeType)) {
-
-                mutation.changeStatus = "ADDED";
-
-            } else if ("MR".contains(mutatedFile.changeType)) {
-
-                mutation.changeStatus = changedFiles.get(mutatedFileName).newFile.get(mutation.lineNo).status;
-
-            } else {
-                // unexpected
-                System.out.println("SOMETHING'S BROKEN!!!");
-            }
+//            if (mutatedFile.changeType.equals("UNCHANGED")) {
+//                mutation.changeStatus = "UNCHANGED";
+//            } else if ("AC".contains(mutatedFile.changeType)) {
+//                mutation.changeStatus = "ADDED";
+//            } else if ("MR".contains(mutatedFile.changeType)) {
+//                mutation.changeStatus = changedFiles.get(mutatedFileName).newFile.get(mutation.lineNo).status;
+//            } else {
+//                // unexpected
+//                System.out.println("SOMETHING'S BROKEN!!!");
+//            }
 
 
             if (mutatedMethod.mutations.contains(mutation)) {
@@ -484,13 +523,14 @@ class MainWorker implements Worker {
 
         }
 
-        String pitOutputFileName = pitOutputBaseFileName.replace("<date-hash>", outputTime + "-" + newCommitHash);
-
-        Path pitOutputPath = Paths.get(outputPath, pitOutputFileName);
         PitOutput pitOutput = new PitOutput(newCommitHash, mutatedFiles);
 
-        jsonHandler.saveToJSON(pitOutput, pitOutputPath.toString());
+        outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
+        String pitOutputFileName = pitOutputBaseFileName.replace("<date-hash>", outputTime + "-" + newCommitHash);
+        String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
+
+        jsonHandler.saveToJSON(pitOutput, pitOutputPath);
 
     }
 
@@ -553,12 +593,17 @@ class MainWorker implements Worker {
     }
 
 
-    private String getGitBranch() {
-        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
-        String command = gitGetCurrentBranchCommand.replace("<gitOptions>", gitOptions);
+    private String getGitBranch(String commit) {
 
-        //commandExecutor.executeCommand(command, true);
-        commandExecutor.executeCommand(command);
+        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
+
+        String command = gitRevParseCommand.replace(gitOptionsPlaceholder, gitOptions);
+        command = command.replace("<revParseOptions>", revParseOptionAbbrevRef);
+        command = command + commit;
+
+
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
 //        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
 //        System.out.println(String.join("\n", commandExecutor.getStandardError());
@@ -573,12 +618,12 @@ class MainWorker implements Worker {
 
         String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
 
-        String command = gitCheckoutBranchCommand.replace("<gitOptions>", gitOptions);
+        String command = gitCheckoutCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<checkoutOptions>", checkoutOptionNewBranch);
         command = command + pitStatBranch;
 
-        //commandExecutor.executeCommand(command, true);
-        commandExecutor.executeCommand(command);
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
 //        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
 //        System.out.println(String.join("\n", commandExecutor.getStandardError());
@@ -590,12 +635,12 @@ class MainWorker implements Worker {
     private void checkoutOriginalBranch() {
         String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
 
-        String command = gitCheckoutBranchCommand.replace("<gitOptions>", gitOptions);
+        String command = gitCheckoutCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<checkoutOptions>", "");
         command = command + originalGitBranch;
 
-//        commandExecutor.executeCommand(command, true);
-        commandExecutor.executeCommand(command);
+//        commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
 //        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
 //        System.out.println(String.join("\n", commandExecutor.getStandardError()));
@@ -605,12 +650,28 @@ class MainWorker implements Worker {
     private void deletePitStatBranch() {
         String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
 
-        String command = gitBranchCommand.replace("<gitOptions>", gitOptions);
+        String command = gitBranchCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<branchOptions>", branchDeleteOption + branchForceOption);
         command = command + pitStatBranch;
 
-//        commandExecutor.executeCommand(command, true);
-        commandExecutor.executeCommand(command);
+//        commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
+
+//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println(String.join("\n", commandExecutor.getStandardError()));
+    }
+
+
+    private void rollBack(String commit) {
+
+        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
+
+        String command = gitResetCommand.replace(gitOptionsPlaceholder, gitOptions);
+        command = command.replace("<resetOptions>", resetHardOption);
+        command = command + commit;
+
+//        commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
 //        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
 //        System.out.println(String.join("\n", commandExecutor.getStandardError()));
@@ -622,15 +683,34 @@ class MainWorker implements Worker {
         if (commit.length() == 0) return "no hash : staged changes not committed";
 
         String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
-        String command = gitRevParseCommand.replace("<gitOptions>", gitOptions) + commit;
 
-        //commandExecutor.executeCommand(command, true);
-        commandExecutor.executeCommand(command);
+        String command = gitRevParseCommand.replace(gitOptionsPlaceholder, gitOptions);
+        command = command.replace("<revParseOptions>", "");
+        command = command + commit;
+
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
 //        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
 //        System.out.println(String.join("\n", commandExecutor.getStandardError());
 
         return String.join("", commandExecutor.getStandardOutput());
+    }
+
+
+    private List<String> getCommitsList() {
+        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(repoPath);
+
+        String command = gitRevListCommand.replace(gitOptionsPlaceholder, gitOptions);
+        command = command.replace("<revListOptions>", revListAllOption);
+
+//        commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
+
+//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println(String.join("\n", commandExecutor.getStandardError()));
+
+        return commandExecutor.getStandardOutput();
     }
 
 
@@ -642,8 +722,8 @@ class MainWorker implements Worker {
 
         String command = buildGitDiffCommand(gitOptions, diffOptions, oldCommit, gitOldFile, newCommit, gitNewFile);
 
-//        commandExecutor.executeCommand(command, true);
-        commandExecutor.executeCommand(command);
+//        commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
         String commandStandardOutput = String.join("\n", commandExecutor.getStandardOutput());
 //        String commandStandardError = String.join("\n", commandExecutor.getStandardError());
@@ -669,8 +749,8 @@ class MainWorker implements Worker {
 
         String command = buildGitDiffCommand(gitOptions, diffOptions, oldCommit, gitOldFile, newCommit, gitNewFile);
 
-        //commandExecutor.executeCommand(command, true);
-        commandExecutor.executeCommand(command);
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
 //        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
 //        System.out.println(String.join("\n", commandExecutor.getStandardError());
@@ -682,7 +762,7 @@ class MainWorker implements Worker {
 
         String command = gitDiffCommand;
 
-        command = command.replace("<gitOptions>", gitOptions);
+        command = command.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<diffOptions>", diffOptions);
         command = command.replace("<oldCommit>", oldCommit);
         command = command.replace("<oldFile>", gitOldFile);
