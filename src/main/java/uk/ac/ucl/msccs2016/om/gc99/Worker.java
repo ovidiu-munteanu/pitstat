@@ -23,7 +23,21 @@ interface Worker {
 
 
     String pomFile = "pom.xml";
+
+    String mvnSrcPath = "src/main/java";
+
+    String pitReportsPath = "target/pit-reports";
     String pitMutationsFile = "mutations.xml";
+
+    String mvnGoalTest = " test ";
+    String mvnGoalPitest = " org.pitest:pitest-maven:mutationCoverage ";
+
+
+
+    String diffOutputBaseFileName = "diffOutput-<date-hash>.json";
+    String pitOutputBaseFileName = "pitOutput-<date-hash>.json";
+
+
 
     String gitOptionsPlaceholder = "<gitOptions>";
 
@@ -53,15 +67,4 @@ interface Worker {
     String diffOptionNoContext = " -U0 ";
     String diffOptionFindCopies = " -C ";
     String diffOptionFindCopiesHarder = " -C -C ";
-
-    String mvnGoalTest = " test ";
-    String mvnGoalPitest = " org.pitest:pitest-maven:mutationCoverage ";
-
-    String mvnSrcPath = "src/main/java";
-
-    String pitStatReportsPath = "target/pitstat-reports";
-
-    String diffOutputBaseFileName = "diffOutput-<date-hash>.json";
-    String pitOutputBaseFileName = "pitOutput-<date-hash>.json";
-
 }

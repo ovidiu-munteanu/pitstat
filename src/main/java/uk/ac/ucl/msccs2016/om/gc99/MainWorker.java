@@ -1,12 +1,21 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
-import org.apache.maven.shared.invoker.*;
+import org.apache.maven.shared.invoker.DefaultInvocationRequest;
+import org.apache.maven.shared.invoker.DefaultInvoker;
+import org.apache.maven.shared.invoker.InvocationRequest;
+import org.apache.maven.shared.invoker.InvocationResult;
+import org.apache.maven.shared.invoker.Invoker;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -19,11 +28,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ListIterator;
-import java.util.NoSuchElementException;
 
 
 class MainWorker implements Worker {
@@ -34,48 +41,61 @@ class MainWorker implements Worker {
     private final JSONHandler jsonHandler;
     private final DocumentBuilder documentBuilder;
 
-    private String repoPath;
-    private String pitReportsPath;
-    private boolean pitReportsPathRelative;
 
-    private String outputPath;
+    private String projectPath;
+    private String pitStatReportsPath;
+    private boolean pitStatReportsPathRelative;
+    private boolean noTimestamp;
+    private String oldCommit;
+    private String newCommit;
+    private int maxRollbacks;
+
 
     private String originalGitBranch;
     private String pitStatBranch;
 
-    private String newCommit;
-    private String oldCommit;
     private String newCommitHash;
     private String oldCommitHash;
-
 
     private String startTime;
     private String outputTime;
 
+    private String outputPath;
 
-    MainWorker(String repoPath, String oldCommit, String newCommit, String pitReportPath, boolean pitReportsPathRelative)
+
+    MainWorker(String projectPath,
+               String pitStatReportsPath,
+               boolean pitStatReportsPathRelative,
+               boolean noTimestamp,
+               String oldCommit,
+               String newCommit,
+               int maxRollbacks)
             throws Exception {
 
         startTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
-        this.repoPath = repoPath;
+
+        this.projectPath = projectPath;
+        this.pitStatReportsPath = pitStatReportsPath;
+        this.pitStatReportsPathRelative = pitStatReportsPathRelative;
+        this.noTimestamp = noTimestamp;
         this.oldCommit = oldCommit;
         this.newCommit = newCommit;
-        this.pitReportsPath = pitReportPath;
-        this.pitReportsPathRelative = pitReportsPathRelative;
+        this.maxRollbacks = maxRollbacks;
+
 
         commandExecutor = new CommandExecutor();
 
         mavenInvoker = new DefaultInvoker();
 
         invocationRequest = new DefaultInvocationRequest();
-        invocationRequest.setPomFile(new File(Paths.get(repoPath, pomFile).toString()));
         invocationRequest.setGoals(Arrays.asList(mvnGoalTest, mvnGoalPitest));
         invocationRequest.setBatchMode(true);
 
         documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 
         jsonHandler = new JSONHandler<>();
+
     }
 
 
@@ -87,14 +107,14 @@ class MainWorker implements Worker {
         List<String> commitsList = getCommitsList();
         String initialCommitHash = commitsList.get(commitsList.size() - 1);
 
-        boolean outputFolderCreated = false;
+        boolean outputFolderCreated = !pitStatReportsPathRelative && noTimestamp;
         boolean isInitialCommit;
 
-        int rollbacks = 0;
+        int currentRollback = 0;
 
         do {
 
-            System.out.println("rollback: " + rollbacks);
+            System.out.println("Rollback: " + currentRollback);
 
             newCommitHash = getCommitHash(newCommit);
             oldCommitHash = getCommitHash(oldCommit);
@@ -120,12 +140,13 @@ class MainWorker implements Worker {
 
             if (!isInitialCommit) {
                 rollBack(parentCommit);
-                rollbacks++;
+                currentRollback++;
             }
-        } while (!isInitialCommit);
 
-//        checkoutOriginalBranch();
-//        deletePitStatBranch();
+        } while (!isInitialCommit && currentRollback <= maxRollbacks);
+
+        checkoutOriginalBranch();
+        deletePitStatBranch();
 
     }
 
@@ -185,7 +206,7 @@ class MainWorker implements Worker {
 
             } else if ("MCR".contains(diffStatus)) {
 
-                List<String> mapFileLines = Files.readAllLines(Paths.get(repoPath, newFile), StandardCharsets.UTF_8);
+                List<String> mapFileLines = Files.readAllLines(Paths.get(projectPath, newFile), StandardCharsets.UTF_8);
                 int mapFileLinePointer = 1;
 
                 oldFileLines = new ArrayList<>();
@@ -409,7 +430,12 @@ class MainWorker implements Worker {
     @SuppressWarnings("unchecked")
     private void runPitMutationTesting() throws Exception {
 
+        File tempPom = createTempPom(projectPath, pomFile);
+
+        invocationRequest.setPomFile(tempPom);
         InvocationResult result = mavenInvoker.execute(invocationRequest);
+
+        tempPom.delete();
 
         if (result.getExitCode() != 0) {
             if (result.getExecutionException() != null) {
@@ -422,10 +448,10 @@ class MainWorker implements Worker {
         System.out.println("\n");
 
         // Path latestPitReportPath = getLatestPitReportPath(pitReportsPath, pitReportsPathRelative);
-        String pitMutationsReport = Paths.get((pitReportsPathRelative ? repoPath : ""), pitReportsPath, pitMutationsFile).toString();
+        String pitMutationsReport = Paths.get(projectPath, pitReportsPath, pitMutationsFile).toString();
 
-        Document doc = documentBuilder.parse(new File(pitMutationsReport));
-        NodeList mutationsList = doc.getElementsByTagName("mutation");
+        Document xmlDoc = documentBuilder.parse(new File(pitMutationsReport));
+        NodeList mutationsList = xmlDoc.getElementsByTagName("mutation");
 
         int hashMapCapacity = (int) (mutationsList.getLength() * 1.3);
         HashMap<String, MutatedFile> mutatedFiles = new HashMap<>(hashMapCapacity);
@@ -534,10 +560,89 @@ class MainWorker implements Worker {
 
     }
 
+    private File createTempPom(String repoPath, String pomFile) throws Exception {
+
+        File repositoryPom = new File(Paths.get(repoPath, pomFile).toString());
+
+        Document xmlDoc = documentBuilder.parse(repositoryPom);
+
+        Element project = (Element) xmlDoc.getFirstChild();
+
+
+        Element build = (Element) project.getElementsByTagName("build").item(0);
+        Element plugins = (Element) build.getElementsByTagName("plugins").item(0);
+        NodeList pluginsList = plugins.getElementsByTagName("plugin");
+        for (int i = 0; i < pluginsList.getLength(); i++) {
+            Node plugin = pluginsList.item(i);
+            String groupId = ((Element) plugin).getElementsByTagName("groupId").item(0).getTextContent();
+            if (groupId.equals("org.pitest")) {
+                plugins.removeChild(plugin);
+                break;
+            }
+        }
+        plugins.appendChild(pitPlugin(xmlDoc));
+
+
+        NodeList dependenciesList = project.getElementsByTagName("dependencies");
+        for (int i = 0; i < dependenciesList.getLength(); i++) {
+            Element dependencies = (Element) dependenciesList.item(i);
+            NodeList dependencyList = dependencies.getElementsByTagName("dependency");
+            for (int j = 0; j < dependencyList.getLength(); j++) {
+                Node dependency = dependencyList.item(j);
+                String groupId = ((Element) dependency).getElementsByTagName("groupId").item(0).getTextContent();
+                if (groupId.equals("junit")) {
+                    Node version = ((Element) dependency).getElementsByTagName("version").item(0);
+                    version.setTextContent("4.12");
+                    break;
+                }
+            }
+        }
+
+
+        File tempPom = Files.createTempFile(Paths.get(repoPath), "pit-pom", ".xml").toFile();
+
+        Transformer transformer = TransformerFactory.newInstance().newTransformer();
+        transformer.transform(new DOMSource(xmlDoc), new StreamResult(tempPom));
+
+        return tempPom;
+    }
+
+
+    private Element pitPlugin(Document xmlDoc) {
+        Element pitPlugin = xmlDoc.createElement("plugin");
+
+        Element pitGroupId = xmlDoc.createElement("groupId");
+        Element pitArtifactId = xmlDoc.createElement("artifactId");
+        Element pitVersion = xmlDoc.createElement("version");
+        Element pitConfiguration = xmlDoc.createElement("configuration");
+        Element pitTimestampedReports = xmlDoc.createElement("timestampedReports");
+        Element pitOutputFormats = xmlDoc.createElement("outputFormats");
+        Element pitThreads = xmlDoc.createElement("threads");
+
+        pitGroupId.appendChild(xmlDoc.createTextNode("org.pitest"));
+        pitArtifactId.appendChild(xmlDoc.createTextNode("pitest-maven"));
+        pitVersion.appendChild(xmlDoc.createTextNode("1.2.0"));
+
+        pitTimestampedReports.appendChild(xmlDoc.createTextNode("false"));
+        pitOutputFormats.appendChild(xmlDoc.createTextNode("XML"));
+        pitThreads.appendChild(xmlDoc.createTextNode("4"));
+
+        pitConfiguration.appendChild(pitTimestampedReports);
+        pitConfiguration.appendChild(pitOutputFormats);
+        pitConfiguration.appendChild(pitThreads);
+
+        pitPlugin.appendChild(pitGroupId);
+        pitPlugin.appendChild(pitArtifactId);
+        pitPlugin.appendChild(pitVersion);
+        pitPlugin.appendChild(pitConfiguration);
+
+        return pitPlugin;
+    }
+
 
     private int createOutputFolder() {
 
-        Path outputPath = Paths.get(repoPath, pitStatReportsPath);
+        Path outputPath = Paths.get((pitStatReportsPathRelative ? projectPath : ""), pitStatReportsPath);
 
         try {
             // create all output folders and sub-folders if they don't already exist
@@ -575,27 +680,27 @@ class MainWorker implements Worker {
     }
 
 
-    private Path getLatestPitReportPath(String pitReportPath, boolean pitReportPathRelative) {
-
-        Path latestPitReportPath = Paths.get((pitReportPathRelative ? repoPath : ""), pitReportPath);
-
-        try {
-            latestPitReportPath = Files.list(latestPitReportPath).filter(Files::isDirectory).max(Comparator.naturalOrder()).get();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (NoSuchElementException e) {
-            e.printStackTrace();
-        }
-
+//    private Path getLatestPitReportPath(String pitReportPath, boolean pitReportPathRelative) {
+//
+//        Path latestPitReportPath = Paths.get((pitReportPathRelative ? projectPath : ""), pitReportPath);
+//
+//        try {
+//            latestPitReportPath = Files.list(latestPitReportPath).filter(Files::isDirectory).max(Comparator.naturalOrder()).get();
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        } catch (NoSuchElementException e) {
+//            e.printStackTrace();
+//        }
+//
 //        System.out.println("\nLatest Pit Report Path: " + latestPitReportPath + "\n");
-
-        return latestPitReportPath;
-    }
+//
+//        return latestPitReportPath;
+//    }
 
 
     private String getGitBranch(String commit) {
 
-        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
 
         String command = gitRevParseCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<revParseOptions>", revParseOptionAbbrevRef);
@@ -616,7 +721,7 @@ class MainWorker implements Worker {
 
         String pitStatBranch = "pitstat" + startTime;
 
-        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
 
         String command = gitCheckoutCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<checkoutOptions>", checkoutOptionNewBranch);
@@ -633,7 +738,7 @@ class MainWorker implements Worker {
 
 
     private void checkoutOriginalBranch() {
-        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
 
         String command = gitCheckoutCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<checkoutOptions>", "");
@@ -648,7 +753,7 @@ class MainWorker implements Worker {
 
 
     private void deletePitStatBranch() {
-        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
 
         String command = gitBranchCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<branchOptions>", branchDeleteOption + branchForceOption);
@@ -664,7 +769,7 @@ class MainWorker implements Worker {
 
     private void rollBack(String commit) {
 
-        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
 
         String command = gitResetCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<resetOptions>", resetHardOption);
@@ -682,7 +787,7 @@ class MainWorker implements Worker {
 
         if (commit.length() == 0) return "no hash : staged changes not committed";
 
-        String gitOptions = gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
 
         String command = gitRevParseCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<revParseOptions>", "");
@@ -699,7 +804,7 @@ class MainWorker implements Worker {
 
 
     private List<String> getCommitsList() {
-        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(projectPath);
 
         String command = gitRevListCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<revListOptions>", revListAllOption);
@@ -716,7 +821,7 @@ class MainWorker implements Worker {
 
     private List<String> gitDiffNameStatus() {
 
-        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(projectPath);
         String diffOptions = diffOptionNameStatus + diffOptionFindCopiesHarder;
         String gitOldFile = "", gitNewFile = "";
 
@@ -742,7 +847,7 @@ class MainWorker implements Worker {
 
     private List<String> gitDiff(String changedFile, String newFile) {
 
-        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(repoPath);
+        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(projectPath);
         String diffOptions = diffOptionFindCopiesHarder + diffOptionNoContext;
         String gitOldFile = " -- " + wrapInvCommas(changedFile);
         String gitNewFile = " -- " + wrapInvCommas(newFile);
