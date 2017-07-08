@@ -29,16 +29,16 @@ interface Worker {
     String pitReportsPath = "target/pit-reports";
     String pitMutationsFile = "mutations.xml";
 
-    String diffOutputBaseFileName = "diffOutput-<date-hash>.json";
-    String pitOutputBaseFileName = "pitOutput-<date-hash>.json";
+
+    String typeDiffOutput = "dif";
+    String typePitOutput = "pit";
+
+    String diffOutputBaseFileName = typeDiffOutput + "-<date-hash>.json";
+    String pitOutputBaseFileName = typePitOutput + "-<date-hash>.json";
 
 
     String mvnGoalTest = " test ";
     String mvnGoalPitest = " org.pitest:pitest-maven:mutationCoverage ";
-
-
-    String headCommit = " HEAD ";
-    String parentOfHeadCommit = " HEAD~ ";
 
 
     String gitOptionsPlaceholder = "<gitOptions>";
@@ -56,8 +56,8 @@ interface Worker {
     String branchDeleteOption = " -D ";
     String branchForceOption = " -f ";
 
-    String gitResetCommand  ="git <gitOptions> reset <resetOptions> ";
-    String resetHardOption =  " --hard ";
+    String gitResetCommand = "git <gitOptions> reset <resetOptions> ";
+    String resetHardOption = " --hard ";
 
     String gitDiffCommand = "git <gitOptions> diff <diffOptions> <oldCommit> <oldFile> <newCommit> <newFileName>";
 
@@ -68,5 +68,16 @@ interface Worker {
     String diffOptionNoContext = " -U0 ";
     String diffOptionFindCopies = " -C ";
     String diffOptionFindCopiesHarder = " -C -C ";
+
+    int nonExistentRowCol = 0,
+            killedRowCol = 1,
+            survivedRowCol = 2,
+            noCoverageRowCol = 3,
+            nonViableRowCol = 4,
+            timedOutRowCol = 5,
+            memoryErrorRowCol = 6,
+            runErrorRowCol = 7,
+            totalRowCol = 8,
+            pitMatrixSize = 9;
 
 }

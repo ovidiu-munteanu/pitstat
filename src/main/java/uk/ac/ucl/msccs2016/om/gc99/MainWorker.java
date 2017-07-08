@@ -19,18 +19,12 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.ListIterator;
+import java.util.*;
 
 
 class MainWorker implements Worker {
@@ -38,19 +32,27 @@ class MainWorker implements Worker {
     private final CommandExecutor commandExecutor;
     private final Invoker mavenInvoker;
     private final InvocationRequest invocationRequest;
+    //    private final JSONHandler<PitOutput> pitJSONHandler;
+//    private final JSONHandler<DiffOutput> diffJSONHandler;
     private final JSONHandler jsonHandler;
+
     private final DocumentBuilder documentBuilder;
 
 
     private String projectPath;
     private String pitStatReportsPath;
     private boolean pitStatReportsPathRelative;
-    private boolean createTimestampFolder;
+    private boolean createTimestampDirectory;
     private String startCommit;
     private String endCommit;
     private int maxRollbacks;
 
-    private List<String> commitsList;
+    private List<String> commitsHashList;
+
+    private String startCommitHash;
+    private String endCommitHash;
+
+    private int indexOfStartCommit;
 
     private String originalGitBranch;
     private String pitStatBranch;
@@ -67,7 +69,7 @@ class MainWorker implements Worker {
     MainWorker(String projectPath,
                String pitStatReportsPath,
                boolean pitStatReportsPathRelative,
-               boolean createTimestampFolder,
+               boolean createTimestampDirectory,
                String startCommit,
                String endCommit,
                int maxRollbacks)
@@ -79,7 +81,7 @@ class MainWorker implements Worker {
         this.projectPath = projectPath;
         this.pitStatReportsPath = pitStatReportsPath;
         this.pitStatReportsPathRelative = pitStatReportsPathRelative;
-        this.createTimestampFolder = createTimestampFolder;
+        this.createTimestampDirectory = createTimestampDirectory;
         this.startCommit = startCommit;
         this.endCommit = endCommit;
         this.maxRollbacks = maxRollbacks;
@@ -95,44 +97,43 @@ class MainWorker implements Worker {
 
         documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 
-        jsonHandler = new JSONHandler<>();
+//        pitJSONHandler = new JSONHandler<>();
+//        diffJSONHandler = new JSONHandler<>();
 
+        jsonHandler = new JSONHandler();
     }
 
 
-    void doWork() throws Exception {
+    boolean validStartEndCommits() {
 
         originalGitBranch = getGitBranch("HEAD");
-        commitsList = getCommitsList();
-
-        String startCommitHash, endCommitHash;
+        commitsHashList = getCommitsHashList();
 
         startCommitHash = parseCommit(startCommit);
-        int indexOfStartCommit = (startCommit.equals("") ? -1 : commitsList.indexOf(startCommitHash));
+        indexOfStartCommit = (startCommit.equals("") ? -1 : commitsHashList.indexOf(startCommitHash));
 
         if (maxRollbacks > 0 && endCommit == null) {
 
             int indexOfEndCommit = (maxRollbacks == Integer.MAX_VALUE) ?
-                    (commitsList.size() - 1) : (indexOfStartCommit + maxRollbacks);
+                    (commitsHashList.size() - 1) : (indexOfStartCommit + maxRollbacks);
 
-            if (indexOfEndCommit > (commitsList.size() - 1)) {
+            if (indexOfEndCommit > (commitsHashList.size() - 1)) {
                 System.out.println("Error: the number of rollbacks is greater than the history of this branch.");
                 App.systemExit(99);
             }
 
-            endCommitHash = commitsList.get(indexOfEndCommit);
+            endCommitHash = commitsHashList.get(indexOfEndCommit);
 
         } else {
 
             if (endCommit.equals("initial-commit")) {
-                endCommitHash = commitsList.get(commitsList.size() - 1);
+                endCommitHash = commitsHashList.get(commitsHashList.size() - 1);
             } else {
                 endCommitHash = parseCommit(endCommit);
             }
 
-            maxRollbacks = commitsList.indexOf(endCommitHash) - indexOfStartCommit;
+            maxRollbacks = commitsHashList.indexOf(endCommitHash) - indexOfStartCommit;
         }
-
 
         if (maxRollbacks < 0) {
             System.out.println("Error: start commit is older than end commit.");
@@ -140,56 +141,247 @@ class MainWorker implements Worker {
             App.systemExit(99);
         }
 
+        return true;
+    }
 
-        if (pitStatReportsPathRelative || createTimestampFolder) {
-            int createOutputFolderResult = createOutputFolder();
-            if (createOutputFolderResult != 0) App.systemExit(createOutputFolderResult);
+
+    void doWork() throws Exception {
+
+        if (pitStatReportsPathRelative || createTimestampDirectory) {
+            outputPath = createOutputDirectory();
+            if (outputPath == null) App.systemExit(98);
+        } else {
+            outputPath = pitStatReportsPath;
         }
-
 
         pitStatBranch = checkoutPitStatBranch();
 
         if (indexOfStartCommit > 0) rollBackTo(startCommitHash);
 
+        int currentCommitIndex = indexOfStartCommit;
+        int parentCommitIndex = currentCommitIndex + 1;
         currentCommitHash = startCommitHash;
-        parentCommitHash = commitsList.get(indexOfStartCommit + 1);
+        parentCommitHash = parentCommitIndex == commitsHashList.size() ?
+                "no parent hash, looking at initial commit" : commitsHashList.get(parentCommitIndex);
 
+        boolean isEndCommit;
         int currentRollback = 0;
-        boolean isEndCommit, atStagedChanges = startCommit.equals("");
 
-        do {
-            System.out.println("Rollback: " + currentRollback);
-
-            System.out.println("Current commit hash: " +
-                    (currentCommitHash.length() > 0 ? currentCommitHash : "no hash, looking at staged changes"));
-            System.out.println("Parent  commit hash: " + parentCommitHash);
-            System.out.println();
-
-            runPitMutationTesting();
-
-            isEndCommit = currentCommitHash.equals(endCommitHash);
-
-            if (!isEndCommit) {
-
-                runGitDiff();
-
-                if (atStagedChanges) {
-                    atStagedChanges = false;
-                } else {
-                    rollBackTo(parentOfHeadCommit);
-                }
-
-                currentCommitHash = getCommitHash(headCommit);
-                parentCommitHash = getCommitHash(parentOfHeadCommit);
-
-                currentRollback++;
-            }
-
-        } while (!isEndCommit && currentRollback <= maxRollbacks);
+//        do {
+//            System.out.println("Rollback: " + currentRollback++);
+//
+//            System.out.println("Current commit hash: " +
+//                    (currentCommitHash.length() > 0 ? currentCommitHash : "no hash, looking at staged changes"));
+//            System.out.println("Parent  commit hash: " + parentCommitHash);
+//            System.out.println();
+//
+//            runPitMutationTesting();
+//
+//            isEndCommit = currentCommitHash.equals(endCommitHash);
+//
+//            if (!isEndCommit) {
+//
+//                runGitDiff();
+//
+//                currentCommitHash = commitsHashList.get(++currentCommitIndex);
+//                parentCommitHash = ++parentCommitIndex == commitsHashList.size() ?
+//                        "no parent hash, looking at initial commit" : commitsHashList.get(parentCommitIndex);
+//
+//                rollBackTo(currentCommitHash);
+//            }
+//
+//        } while (!isEndCommit && currentRollback <= maxRollbacks);
 
         checkoutOriginalBranch();
         deletePitStatBranch();
 
+
+        int[][] pitMatrix = new int[pitMatrixSize][pitMatrixSize];
+
+        int maxValue = buildPitMatrix(startCommitHash, endCommitHash, pitMatrix);
+
+        int digitsNo = Math.max(4, 2 + Integer.toString(maxValue).length());
+        String format = "%-" + digitsNo + "d";
+
+
+
+
+//        if (pitMatrix != null)
+            for (int i = 0; i < pitMatrixSize; i++) {
+                for (int j = 0; j < pitMatrixSize; j++) {
+                    System.out.print(String.format(format, pitMatrix[i][j]));
+                }
+                System.out.println("\n");
+            }
+
+
+    }
+
+
+    private int buildPitMatrix(String newCommit, String oldCommit, int[][] pitMatrix) {
+
+        PitOutput newCommitPitOutput = loadPitOutput(newCommit);
+        PitOutput oldCommitPitOutput = loadPitOutput(oldCommit);
+
+//        if (newCommitPitOutput == null || oldCommitPitOutput == null) return null;
+
+//        int[][] pitMatrix = new int[pitMatrixSize][pitMatrixSize];
+
+        countMutations(newCommitPitOutput, true, oldCommitPitOutput, pitMatrix);
+        countMutations(oldCommitPitOutput, false, newCommitPitOutput, pitMatrix);
+
+        int maxValue = 0;
+
+        for (int i = 0; i < totalRowCol; i++)
+            for (int j = 0; j < totalRowCol; j++) {
+                pitMatrix[i][totalRowCol] += pitMatrix[i][j];
+                pitMatrix[totalRowCol][i] += pitMatrix[j][i];
+            }
+
+
+        for (int i = 0; i < pitMatrixSize; i++) {
+            if (maxValue < pitMatrix[totalRowCol][i]) maxValue = pitMatrix[totalRowCol][i];
+            if (maxValue < pitMatrix[i][totalRowCol]) maxValue = pitMatrix[i][totalRowCol];
+        }
+
+
+//        return pitMatrix;
+
+        return maxValue;
+    }
+
+
+    private void countMutations(PitOutput newCommitPitOutput, boolean isNewCommit,
+                                PitOutput oldCommitPitOutput, int[][] pitMatrix) {
+
+        String newFileName, newClassName, newMethodName;
+        MutatedFile newMutatedFile, oldMutatedFile;
+        MutatedFile.MutatedClass newMutatedClass, oldMutatedClass;
+        MutatedFile.MutatedMethod newMutatedMethod, oldMutatedMethod;
+
+        for (Map.Entry<String, MutatedFile> newMutatedFileEntry : newCommitPitOutput.mutatedFiles.entrySet()) {
+
+            newFileName = newMutatedFileEntry.getKey();
+            newMutatedFile = newMutatedFileEntry.getValue();
+
+            oldMutatedFile = oldCommitPitOutput.mutatedFiles.get(newFileName);
+
+            for (Map.Entry<String, MutatedFile.MutatedClass> newMutatedClassEntry : newMutatedFile.mutatedClasses.entrySet()) {
+
+                newClassName = newMutatedClassEntry.getKey();
+                newMutatedClass = newMutatedClassEntry.getValue();
+
+                oldMutatedClass = oldMutatedFile == null ? null : oldMutatedFile.mutatedClasses.get(newClassName);
+
+                for (Map.Entry<String, MutatedFile.MutatedMethod> newMutatedMethodEntry : newMutatedClass.mutatedMethods.entrySet()) {
+
+                    newMethodName = newMutatedMethodEntry.getKey();
+                    newMutatedMethod = newMutatedMethodEntry.getValue();
+
+                    oldMutatedMethod = oldMutatedClass == null ? null : oldMutatedClass.mutatedMethods.get(newMethodName);
+
+                    for (MutatedFile.Mutation newMutation : newMutatedMethod.mutations) {
+
+                        int matrixRow = nonExistentRowCol;
+
+                        if (oldMutatedFile != null && oldMutatedClass != null && oldMutatedMethod != null) {
+
+                            Iterator<MutatedFile.Mutation> oldMutationsIterator = oldMutatedMethod.mutations.listIterator();
+
+                            while (oldMutationsIterator.hasNext()) {
+                                MutatedFile.Mutation oldMutation = oldMutationsIterator.next();
+                                if (oldMutation.equals(newMutation)) {
+                                    matrixRow = getMatrixRowCol(oldMutation.status);
+
+                                    if (isNewCommit) oldMutationsIterator.remove();
+
+                                    break;
+                                }
+                            }
+                        }
+
+                        int matrixCol = getMatrixRowCol(newMutation.status);
+
+                        if (isNewCommit)
+                            pitMatrix[matrixRow][matrixCol]++;
+                        else
+                            pitMatrix[matrixCol][matrixRow]++;
+
+                    }
+                    if (isNewCommit && oldMutatedMethod != null && oldMutatedMethod.mutations.size() == 0)
+                        oldMutatedClass.mutatedMethods.remove(newMethodName);
+                }
+                if (isNewCommit && oldMutatedClass != null && oldMutatedClass.mutatedMethods.size() == 0)
+                    oldMutatedFile.mutatedClasses.remove(newClassName);
+            }
+            if (isNewCommit && oldMutatedFile != null && oldMutatedFile.mutatedClasses.size() == 0)
+                oldCommitPitOutput.mutatedFiles.remove(newFileName);
+        }
+    }
+
+
+    private int getMatrixRowCol(String status) {
+        switch (status) {
+            case "KILLED":
+                return killedRowCol;
+            case "SURVIVED":
+                return survivedRowCol;
+            case "NO_COVERAGE":
+                return noCoverageRowCol;
+            case "NON_VIABLE":
+                return nonViableRowCol;
+            case "TIMED_OUT":
+                return timedOutRowCol;
+            case "MEMORY_ERROR":
+                return memoryErrorRowCol;
+            case "RUN_ERROR":
+                return runErrorRowCol;
+        }
+        return -1;
+    }
+
+
+    private PitOutput loadPitOutput(String commit) {
+        String pitOutputFileName = getOutputFileName(commit, typePitOutput, outputPath);
+
+        PitOutput loadPitOutput;
+
+        try {
+//            loadPitOutput = pitJSONHandler.loadFromJSON(pitOutputFileName);
+            loadPitOutput = jsonHandler.loadPitFromJSON(pitOutputFileName);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        return loadPitOutput;
+    }
+
+
+    private String getOutputFileName(String commit, String type, String directory) {
+        List<String> fileList = filesInDirectory(directory);
+
+        if (fileList == null) return null;
+
+        for (String qualifiedName : fileList) {
+            String fileName = Paths.get(qualifiedName).getFileName().toString();
+            if (fileName.startsWith(type) && fileName.contains(commit)) return qualifiedName;
+        }
+
+        return null;
+    }
+
+    private List<String> filesInDirectory(String directory) {
+        List<String> filesInDirectory = new ArrayList<>();
+        try {
+            Files.list(Paths.get(directory))
+                    .filter(Files::isRegularFile)
+                    .forEach(file -> filesInDirectory.add(file.toString()));
+        } catch (IOException e) {
+            return null;
+        }
+        return filesInDirectory;
     }
 
 
@@ -323,7 +515,9 @@ class MainWorker implements Worker {
                 (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
         String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
 
-        jsonHandler.saveToJSON(pitOutput, pitOutputPath);
+//        pitJSONHandler.saveToJSON(pitOutput, pitOutputPath);
+        jsonHandler.savePitToJSON(pitOutput, pitOutputPath);
+
 
     }
 
@@ -560,7 +754,9 @@ class MainWorker implements Worker {
                 (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
         String diffOutputPath = Paths.get(outputPath, diffOutputFileName).toString();
 
-        jsonHandler.saveToJSON(diffOutput, diffOutputPath);
+//        diffJSONHandler.saveToJSON(diffOutput, diffOutputPath);
+        jsonHandler.saveDifToJSON(diffOutput, diffOutputPath);
+
 
     }
 
@@ -692,44 +888,30 @@ class MainWorker implements Worker {
     }
 
 
-    private int createOutputFolder() {
-
+    private String createOutputDirectory() {
+        String resultPath;
         Path outputPath = Paths.get((pitStatReportsPathRelative ? projectPath : ""), pitStatReportsPath);
 
         try {
-            // create all output folders and sub-folders if they don't already exist
-            this.outputPath = Files.createDirectories(outputPath).toString();
-        } catch (FileAlreadyExistsException e) {
+            // create all output directories and sub-directories if they don't already exist
+            resultPath = Files.createDirectories(outputPath).toString();
+        } catch (Exception e) {
             e.printStackTrace();
-
-            // file exists but is not a folder
-            return 99;
-        } catch (IOException e) {
-            e.printStackTrace();
-
-            // some other IO Exception has occurred
-            return 1;
+            return null;
         }
 
-        if (createTimestampFolder) {
-            outputPath = Paths.get(outputPath.toString(), startTime);
-
+        if (createTimestampDirectory) {
+            // create timestamped output sub-directory
+            outputPath = Paths.get(resultPath, startTime);
             try {
-                this.outputPath = Files.createDirectory(outputPath).toString();
-            } catch (FileAlreadyExistsException e) {
+                resultPath = Files.createDirectory(outputPath).toString();
+            } catch (Exception e) {
                 e.printStackTrace();
-
-                // file exists
-                return 98;
-            } catch (IOException e) {
-                e.printStackTrace();
-
-                // some other IO Exception has occurred
-                return 1;
+                return null;
             }
         }
 
-        return 0;
+        return resultPath;
     }
 
 
@@ -836,7 +1018,7 @@ class MainWorker implements Worker {
     }
 
 
-    private List<String> getCommitsList() {
+    private List<String> getCommitsHashList() {
         String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(projectPath);
 
         String command = gitRevListCommand.replace(gitOptionsPlaceholder, gitOptions);
@@ -886,9 +1068,9 @@ class MainWorker implements Worker {
                     App.systemExit(99);
                 }
 
-                if (generation > (commitsList.size() - 1)) {
+                if (generation > (commitsHashList.size() - 1)) {
                     System.out.println("The generation you specified exceeds the history of the branch.");
-                    System.out.println("Tip: this branch has " + (commitsList.size() - 1) + " past commits");
+                    System.out.println("Tip: this branch has " + (commitsHashList.size() - 1) + " past commits");
                     App.systemExit(99);
                 }
             }
@@ -898,14 +1080,14 @@ class MainWorker implements Worker {
 
         if (commit.length() == 7 && shortRevExists(commit)) return getCommitHash(commit);
 
-        if (commit.length() == 40 && commitsList.contains(commit)) return commit;
+        if (commit.length() == 40 && commitsHashList.contains(commit)) return commit;
 
         return null;
     }
 
 
     private boolean shortRevExists(String shortRev) {
-        for (String commit : commitsList)
+        for (String commit : commitsHashList)
             if (commit.startsWith(shortRev)) return true;
         return false;
     }

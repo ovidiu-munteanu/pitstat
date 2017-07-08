@@ -35,8 +35,13 @@ class MutatedFile {
 
         String changeStatus;
 
-        Mutation(){
+        Mutation() {
             changeStatus = null;
+        }
+
+        boolean equals(Mutation mutation) {
+            return lineNo == mutation.lineNo && mutator.equals(mutation.mutator) &&
+                    index == mutation.index && description.equals(mutation.description);
         }
     }
 

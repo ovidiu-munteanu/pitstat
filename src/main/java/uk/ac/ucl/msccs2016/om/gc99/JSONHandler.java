@@ -4,76 +4,71 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 
 
-class JSONHandler<E> {
+class JSONHandler {
 
     private Gson gson;
 
     JSONHandler() {
-
         gson = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
-
     }
 
-    E loadFromJSON(String fileName) throws Exception {
+//    E loadFromJSON(String fileName) throws Exception {
+//        BufferedReader unicodeBufferedReader =
+//                new BufferedReader(new InputStreamReader(new FileInputStream(new File(fileName)), "UTF-8"));
+//        E object = gson.fromJson(unicodeBufferedReader, new TypeToken<E>() {}.getType());
+//        unicodeBufferedReader.close();
+//        return object;
+//    }
 
-        Reader unicodeReader = fileBufferedReader_UTF8(fileName);
 
-        E object = gson.fromJson(fileBufferedReader_UTF8(fileName), new TypeToken<E>() {
-        }.getType());
-
-        unicodeReader.close();
-
+    PitOutput loadPitFromJSON(String fileName) throws Exception {
+        BufferedReader unicodeBufferedReader =
+                new BufferedReader(new InputStreamReader(new FileInputStream(new File(fileName)), "UTF-8"));
+        PitOutput object = gson.fromJson(unicodeBufferedReader, new TypeToken<PitOutput>() {}.getType());
+        unicodeBufferedReader.close();
         return object;
     }
 
-    void saveToJSON(E object, String fileName) throws Exception {
-
-        Writer unicodeWriter = fileBufferedWriter_UTF8(fileName);
-
-        gson.toJson(object, unicodeWriter);
-
-        unicodeWriter.flush();
-        unicodeWriter.close();
+    DiffOutput loadDifFromJSON(String fileName) throws Exception {
+        BufferedReader unicodeBufferedReader =
+                new BufferedReader(new InputStreamReader(new FileInputStream(new File(fileName)), "UTF-8"));
+        DiffOutput object = gson.fromJson(unicodeBufferedReader, new TypeToken<DiffOutput>() {}.getType());
+        unicodeBufferedReader.close();
+        return object;
     }
 
 
-    private BufferedReader fileBufferedReader_UTF8(String fileName) {
 
-        File jsonFile = new File(fileName);
-        BufferedReader bufferedReader = null;
+//    void saveToJSON(E object, String fileName) throws Exception {
+//        BufferedWriter unicodeBufferedWriter =
+//                new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(fileName)), "UTF-8"));
+//        gson.toJson(object, unicodeBufferedWriter);
+//        unicodeBufferedWriter.close();
+//    }
 
-        try {
-            bufferedReader = new BufferedReader(new InputStreamReader(new FileInputStream(jsonFile), "UTF-8"));
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-        }
-
-        return bufferedReader;
-
+    void savePitToJSON(PitOutput object, String fileName) throws Exception {
+        BufferedWriter unicodeBufferedWriter =
+                new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(fileName)), "UTF-8"));
+        gson.toJson(object, unicodeBufferedWriter);
+        unicodeBufferedWriter.close();
     }
 
-
-    private BufferedWriter fileBufferedWriter_UTF8(String fileName) {
-
-        File jsonFile = new File(fileName);
-        BufferedWriter bufferedWriter = null;
-
-        try {
-            bufferedWriter = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(jsonFile), "UTF-8"));
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        }
-
-        return bufferedWriter;
-
+    void saveDifToJSON(DiffOutput object, String fileName) throws Exception {
+        BufferedWriter unicodeBufferedWriter =
+                new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(fileName)), "UTF-8"));
+        gson.toJson(object, unicodeBufferedWriter);
+        unicodeBufferedWriter.close();
     }
+
 
 
 }

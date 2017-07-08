@@ -171,7 +171,8 @@ public class App {
                 maxRollbacks
         );
 
-        worker.doWork();
+
+        if (worker.validStartEndCommits()) worker.doWork();
 
 
         if (shutdown) Runtime.getRuntime().exec(systemShutdownCommand(30));
