@@ -32,9 +32,11 @@ interface Worker {
 
     String typeDiffOutput = "dif";
     String typePitOutput = "pit";
+    String typeMatrixOutput = "mtx";
 
     String diffOutputBaseFileName = typeDiffOutput + "-<date-hash>.json";
     String pitOutputBaseFileName = typePitOutput + "-<date-hash>.json";
+    String matrixOutputBaseFileName = typeMatrixOutput + "-<date-hash>.txt";
 
 
     String mvnGoalTest = " test ";

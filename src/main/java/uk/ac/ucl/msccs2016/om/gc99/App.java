@@ -50,21 +50,21 @@ public class App {
                     try {
                         projectPath = args[++i];
                     } catch (ArrayIndexOutOfBoundsException e) {
-                        System.out.println("No project path specified.");
+                        System.err.println("No project path specified.");
                         systemExit(99);
                     }
                     switch (projectExists(projectPath)) {
                         case 1:
-                            System.out.println("Cannot access the specified project directory: " + projectPath);
+                            System.err.println("Cannot access the specified project directory: " + projectPath);
                             systemExit(1);
                         case 2:
-                            System.out.println("The specified project path is not a directory: " + projectPath);
+                            System.err.println("The specified project path is not a directory: " + projectPath);
                             systemExit(2);
                         case 3:
-                            System.out.println("Cannot access pom.xml in the specified project directory: " + projectPath);
+                            System.err.println("Cannot access pom.xml in the specified project directory: " + projectPath);
                             systemExit(3);
                         case 4:
-                            System.out.println("Cannot write inside the specified reports directory: " + projectPath);
+                            System.err.println("Cannot write inside the specified reports directory: " + projectPath);
                             systemExit(4);
                     }
                     break;
@@ -73,18 +73,18 @@ public class App {
                     try {
                         pitStatReportsPath = args[++i];
                     } catch (ArrayIndexOutOfBoundsException e) {
-                        System.out.println("No reports path specified.");
+                        System.err.println("No reports path specified.");
                         systemExit(99);
                     }
                     switch (reportsPathOK(pitStatReportsPath)) {
                         case 1:
-                            System.out.println("Cannot access the specified reports directory: " + projectPath);
+                            System.err.println("Cannot access the specified reports directory: " + projectPath);
                             systemExit(1);
                         case 2:
-                            System.out.println("The specified reports path is not a directory: " + projectPath);
+                            System.err.println("The specified reports path is not a directory: " + projectPath);
                             systemExit(2);
                         case 3:
-                            System.out.println("Cannot write inside the specified reports directory: " + projectPath);
+                            System.err.println("Cannot write inside the specified reports directory: " + projectPath);
                             systemExit(4);
                     }
                     pitStatReportsPathRelative = false;
@@ -94,7 +94,7 @@ public class App {
                     try {
                         startCommit = args[++i];
                     } catch (ArrayIndexOutOfBoundsException e) {
-                        System.out.println("No start commit specified.");
+                        System.err.println("No start commit specified.");
                         systemExit(99);
                     }
                     checkCommitLength(startCommit);
@@ -102,13 +102,13 @@ public class App {
                 case "-EC":
                 case "--end-commit":
                     if (rollbacksArg) {
-                        System.out.println("Cannot specify both end commit and rollbacks.\nPlease try again using only one of the two options.");
+                        System.err.println("Cannot specify both end commit and rollbacks.\nPlease try again using only one of the two options.");
                         systemExit(99);
                     }
                     try {
                         endCommit = args[++i];
                     } catch (ArrayIndexOutOfBoundsException e) {
-                        System.out.println("No end commit specified.");
+                        System.err.println("No end commit specified.");
                         systemExit(99);
                     }
                     checkCommitLength(endCommit);
@@ -118,7 +118,7 @@ public class App {
                 case "-R":
                 case "--rollbacks":
                     if (endCommitArg) {
-                        System.out.println("Cannot specify both rollbacks and end commit.\nPlease try again using only one of the two options.");
+                        System.err.println("Cannot specify both rollbacks and end commit.\nPlease try again using only one of the two options.");
                         systemExit(99);
                     }
                     String rollbacksString = null;
@@ -131,13 +131,13 @@ public class App {
                             if (maxRollbacks < 1) throw new InvalidParameterException();
                         }
                     } catch (ArrayIndexOutOfBoundsException e) {
-                        System.out.println("No end commit specified.");
+                        System.err.println("No end commit specified.");
                         systemExit(99);
                     } catch (NumberFormatException e) {
-                        System.out.println("Invalid number of rollbacks: " + rollbacksString);
+                        System.err.println("Invalid number of rollbacks: " + rollbacksString);
                         systemExit(5);
                     } catch (InvalidParameterException e) {
-                        System.out.println("Invalid number of rollbacks. Cannot be less than 1.");
+                        System.err.println("Invalid number of rollbacks. Cannot be less than 1.");
                         systemExit(6);
                     }
                     rollbacksArg = true;
@@ -151,13 +151,13 @@ public class App {
                     shutdown = true;
                     break;
                 default:
-                    System.out.println("Invalid argument: " + arg);
+                    System.err.println("Invalid argument: " + arg);
                     systemExit(99);
             }
         }
 
         if (startCommit.equals(endCommit)) {
-            System.out.println("The start and end commits cannot be the same.");
+            System.err.println("The start and end commits cannot be the same.");
             systemExit(99);
         }
 
@@ -214,10 +214,10 @@ public class App {
 
     private static void checkCommitLength(String commit) {
         if (commit.length() < 4) {
-            System.out.println("The commit reference you entered is too short.\nTip: a commit reference is at least 4 characters long, e.g. HEAD");
+            System.err.println("The commit reference you entered is too short.\nTip: a commit reference is at least 4 characters long, e.g. HEAD");
             systemExit(99);
         } else if (commit.length() > 40) {
-            System.out.println("The commit reference you entered is too long.\nTip: a full commit hash is 40 characters long");
+            System.err.println("The commit reference you entered is too long.\nTip: a full commit hash is 40 characters long");
             systemExit(99);
         }
     }

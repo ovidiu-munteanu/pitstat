@@ -21,15 +21,6 @@ class JSONHandler {
         gson = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
     }
 
-//    E loadFromJSON(String fileName) throws Exception {
-//        BufferedReader unicodeBufferedReader =
-//                new BufferedReader(new InputStreamReader(new FileInputStream(new File(fileName)), "UTF-8"));
-//        E object = gson.fromJson(unicodeBufferedReader, new TypeToken<E>() {}.getType());
-//        unicodeBufferedReader.close();
-//        return object;
-//    }
-
-
     PitOutput loadPitFromJSON(String fileName) throws Exception {
         BufferedReader unicodeBufferedReader =
                 new BufferedReader(new InputStreamReader(new FileInputStream(new File(fileName)), "UTF-8"));
@@ -46,15 +37,6 @@ class JSONHandler {
         return object;
     }
 
-
-
-//    void saveToJSON(E object, String fileName) throws Exception {
-//        BufferedWriter unicodeBufferedWriter =
-//                new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(fileName)), "UTF-8"));
-//        gson.toJson(object, unicodeBufferedWriter);
-//        unicodeBufferedWriter.close();
-//    }
-
     void savePitToJSON(PitOutput object, String fileName) throws Exception {
         BufferedWriter unicodeBufferedWriter =
                 new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(fileName)), "UTF-8"));
@@ -68,7 +50,5 @@ class JSONHandler {
         gson.toJson(object, unicodeBufferedWriter);
         unicodeBufferedWriter.close();
     }
-
-
 
 }

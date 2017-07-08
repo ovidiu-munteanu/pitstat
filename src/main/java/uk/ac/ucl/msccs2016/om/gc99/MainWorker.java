@@ -24,7 +24,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
 
 
 class MainWorker implements Worker {
@@ -32,8 +39,6 @@ class MainWorker implements Worker {
     private final CommandExecutor commandExecutor;
     private final Invoker mavenInvoker;
     private final InvocationRequest invocationRequest;
-    //    private final JSONHandler<PitOutput> pitJSONHandler;
-//    private final JSONHandler<DiffOutput> diffJSONHandler;
     private final JSONHandler jsonHandler;
 
     private final DocumentBuilder documentBuilder;
@@ -51,12 +56,12 @@ class MainWorker implements Worker {
 
     private String startCommitHash;
     private String endCommitHash;
-
     private int indexOfStartCommit;
 
     private String originalGitBranch;
     private String pitStatBranch;
 
+    private String childCommitHash;
     private String currentCommitHash;
     private String parentCommitHash;
 
@@ -64,6 +69,10 @@ class MainWorker implements Worker {
     private String outputTime;
 
     private String outputPath;
+
+
+    private boolean isEndCommit;
+    private HashMap<String, ChangedFile> changedFiles;
 
 
     MainWorker(String projectPath,
@@ -97,9 +106,6 @@ class MainWorker implements Worker {
 
         documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 
-//        pitJSONHandler = new JSONHandler<>();
-//        diffJSONHandler = new JSONHandler<>();
-
         jsonHandler = new JSONHandler();
     }
 
@@ -118,7 +124,7 @@ class MainWorker implements Worker {
                     (commitsHashList.size() - 1) : (indexOfStartCommit + maxRollbacks);
 
             if (indexOfEndCommit > (commitsHashList.size() - 1)) {
-                System.out.println("Error: the number of rollbacks is greater than the history of this branch.");
+                System.err.println("The number of rollbacks is greater than the history of this branch.");
                 App.systemExit(99);
             }
 
@@ -136,7 +142,7 @@ class MainWorker implements Worker {
         }
 
         if (maxRollbacks < 0) {
-            System.out.println("Error: start commit is older than end commit.");
+            System.err.println("Start commit is older than end commit.");
             System.out.println("Tip: pitStat rolls back from the start commit towards the end commit");
             App.systemExit(99);
         }
@@ -160,61 +166,90 @@ class MainWorker implements Worker {
 
         int currentCommitIndex = indexOfStartCommit;
         int parentCommitIndex = currentCommitIndex + 1;
+        childCommitHash = null;
         currentCommitHash = startCommitHash;
         parentCommitHash = parentCommitIndex == commitsHashList.size() ?
-                "no parent hash, looking at initial commit" : commitsHashList.get(parentCommitIndex);
+                "currently at initial commit -> no parent hash" : commitsHashList.get(parentCommitIndex);
 
-        boolean isEndCommit;
         int currentRollback = 0;
 
-//        do {
-//            System.out.println("Rollback: " + currentRollback++);
-//
-//            System.out.println("Current commit hash: " +
-//                    (currentCommitHash.length() > 0 ? currentCommitHash : "no hash, looking at staged changes"));
-//            System.out.println("Parent  commit hash: " + parentCommitHash);
-//            System.out.println();
-//
-//            runPitMutationTesting();
-//
-//            isEndCommit = currentCommitHash.equals(endCommitHash);
-//
-//            if (!isEndCommit) {
-//
-//                runGitDiff();
-//
-//                currentCommitHash = commitsHashList.get(++currentCommitIndex);
-//                parentCommitHash = ++parentCommitIndex == commitsHashList.size() ?
-//                        "no parent hash, looking at initial commit" : commitsHashList.get(parentCommitIndex);
-//
-//                rollBackTo(currentCommitHash);
-//            }
-//
-//        } while (!isEndCommit && currentRollback <= maxRollbacks);
+        do {
+            System.out.println("Rollback: " + currentRollback++);
+
+            System.out.println("Current commit hash: " +
+                    (currentCommitHash.length() > 0 ? currentCommitHash : "currently at staged changes (not committed) -> no hash"));
+            System.out.println("Parent  commit hash: " + parentCommitHash);
+            System.out.println();
+
+            isEndCommit = currentCommitHash.equals(endCommitHash);
+
+            if (isEndCommit)
+                System.out.println("Currently at end commit for this run (" + currentCommitHash + ") -> skipping git diff\n");
+            else
+                runGitDiff();
+
+
+            runPitMutationTesting();
+
+            if (childCommitHash != null) runPitMatrixAnalysis();
+
+            if (!isEndCommit) {
+                childCommitHash = currentCommitHash;
+                currentCommitHash = commitsHashList.get(++currentCommitIndex);
+                parentCommitHash = ++parentCommitIndex == commitsHashList.size() ?
+                        "currently at initial commit -> no parent hash" : commitsHashList.get(parentCommitIndex);
+                rollBackTo(currentCommitHash);
+            }
+
+        } while (!isEndCommit && currentRollback <= maxRollbacks);
 
         checkoutOriginalBranch();
         deletePitStatBranch();
 
+    }
+
+
+    private void runPitMatrixAnalysis() {
 
         int[][] pitMatrix = new int[pitMatrixSize][pitMatrixSize];
 
-        int maxValue = buildPitMatrix(startCommitHash, endCommitHash, pitMatrix);
+        int maxMutationsNo = buildPitMatrix(childCommitHash, currentCommitHash, pitMatrix);
 
-        int digitsNo = Math.max(4, 2 + Integer.toString(maxValue).length());
+        if (maxMutationsNo == -1) App.systemExit(99);
+
+        int digitsNo = Math.max(3, 2 + Integer.toString(maxMutationsNo).length());
         String format = "%-" + digitsNo + "d";
 
+        StringBuilder stringBuilder = new StringBuilder();
+        String formattedNumber;
 
 
+        System.out.println("Pit analysis matrix:");
 
-//        if (pitMatrix != null)
-            for (int i = 0; i < pitMatrixSize; i++) {
-                for (int j = 0; j < pitMatrixSize; j++) {
-                    System.out.print(String.format(format, pitMatrix[i][j]));
-                }
-                System.out.println("\n");
+        for (int i = 0; i < pitMatrixSize; i++) {
+            for (int j = 0; j < pitMatrixSize; j++) {
+                formattedNumber = String.format(format, pitMatrix[i][j]);
+                stringBuilder.append(formattedNumber);
+                System.out.print(formattedNumber);
+
             }
+            stringBuilder.append("\n");
+            System.out.println("\n");
+        }
 
+        outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
+        // Write output file with results of matrix analysis
+        String matrixOutputFileName = matrixOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
+                (childCommitHash.equals("") ? "staged-changes-no-hash" : childCommitHash));
+        Path diffOutputPath = Paths.get(outputPath, matrixOutputFileName);
+
+        try {
+            Files.write(diffOutputPath, stringBuilder.toString().getBytes());
+        } catch (IOException e) {
+            System.err.println("runPitMatrixAnalysis(): can't write matrix file for some reason");
+            e.printStackTrace();
+        }
     }
 
 
@@ -223,9 +258,7 @@ class MainWorker implements Worker {
         PitOutput newCommitPitOutput = loadPitOutput(newCommit);
         PitOutput oldCommitPitOutput = loadPitOutput(oldCommit);
 
-//        if (newCommitPitOutput == null || oldCommitPitOutput == null) return null;
-
-//        int[][] pitMatrix = new int[pitMatrixSize][pitMatrixSize];
+        if (newCommitPitOutput == null || oldCommitPitOutput == null) return -1;
 
         countMutations(newCommitPitOutput, true, oldCommitPitOutput, pitMatrix);
         countMutations(oldCommitPitOutput, false, newCommitPitOutput, pitMatrix);
@@ -243,9 +276,6 @@ class MainWorker implements Worker {
             if (maxValue < pitMatrix[totalRowCol][i]) maxValue = pitMatrix[totalRowCol][i];
             if (maxValue < pitMatrix[i][totalRowCol]) maxValue = pitMatrix[i][totalRowCol];
         }
-
-
-//        return pitMatrix;
 
         return maxValue;
     }
@@ -347,11 +377,9 @@ class MainWorker implements Worker {
         PitOutput loadPitOutput;
 
         try {
-//            loadPitOutput = pitJSONHandler.loadFromJSON(pitOutputFileName);
             loadPitOutput = jsonHandler.loadPitFromJSON(pitOutputFileName);
-
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("The pit output file for commit " + commit + " could not be loaded.");
             return null;
         }
 
@@ -386,149 +414,12 @@ class MainWorker implements Worker {
 
 
     @SuppressWarnings("unchecked")
-    private void runPitMutationTesting() throws Exception {
-
-        File tempPom = createTempPom(projectPath, pomFile);
-
-        invocationRequest.setPomFile(tempPom);
-        InvocationResult result = mavenInvoker.execute(invocationRequest);
-
-        tempPom.delete();
-
-        if (result.getExitCode() != 0) {
-            if (result.getExecutionException() != null) {
-                throw new Exception("Maven invocation failed.", result.getExecutionException());
-            } else {
-                throw new Exception("Maven invocation failed. Exit code: " + result.getExitCode());
-            }
-        }
-
-        System.out.println("\n");
-
-        // Path latestPitReportPath = getLatestPitReportPath(pitReportsPath, pitReportsPathRelative);
-        String pitMutationsReport = Paths.get(projectPath, pitReportsPath, pitMutationsFile).toString();
-
-        Document xmlDoc = documentBuilder.parse(new File(pitMutationsReport));
-        NodeList mutationsList = xmlDoc.getElementsByTagName("mutation");
-
-        int hashMapCapacity = (int) (mutationsList.getLength() * 1.3);
-        HashMap<String, MutatedFile> mutatedFiles = new HashMap<>(hashMapCapacity);
-
-        for (int i = 0; i < mutationsList.getLength(); ++i) {
-
-            Element mutationElement = (Element) mutationsList.item(i);
-            boolean detectedAttribute = Boolean.valueOf(mutationElement.getAttribute("detected"));
-            String statusAttribute = mutationElement.getAttribute("status");
-
-            String sourceFileElement = mutationElement.getElementsByTagName("sourceFile").item(0).getTextContent();
-            String mutatedClassElement = mutationElement.getElementsByTagName("mutatedClass").item(0).getTextContent();
-            String mutatedMethodElement = mutationElement.getElementsByTagName("mutatedMethod").item(0).getTextContent();
-            String methodDescriptionElement = mutationElement.getElementsByTagName("methodDescription").item(0).getTextContent();
-            int lineNumberElement = Integer.valueOf(mutationElement.getElementsByTagName("lineNumber").item(0).getTextContent());
-            String mutatorElement = mutationElement.getElementsByTagName("mutator").item(0).getTextContent();
-            int indexElement = Integer.valueOf(mutationElement.getElementsByTagName("index").item(0).getTextContent());
-            String killingTestElement = mutationElement.getElementsByTagName("killingTest").item(0).getTextContent();
-            String descriptionElement = mutationElement.getElementsByTagName("description").item(0).getTextContent();
-
-            String packagePath = mutatedClassElement.substring(0, mutatedClassElement.lastIndexOf("."));
-            packagePath = packagePath.replace(".", "/");
-
-            String mutatedFileName = mavenJavaMainSrcPath + "/" + packagePath + "/" + sourceFileElement;
-
-            MutatedFile mutatedFile;
-            if (mutatedFiles.containsKey(mutatedFileName)) {
-                mutatedFile = mutatedFiles.get(mutatedFileName);
-            } else {
-                mutatedFile = new MutatedFile();
-
-//                if (changedFiles.containsKey(mutatedFileName)) {
-//                    mutatedFile.changeType = changedFiles.get(mutatedFileName).changeType;
-//                } else {
-//                    mutatedFile.changeType = "UNCHANGED";
-//                }
-            }
-
-            MutatedFile.MutatedClass mutatedClass;
-            if (mutatedFile.mutatedClasses.containsKey(mutatedClassElement)) {
-                mutatedClass = mutatedFile.mutatedClasses.get(mutatedClassElement);
-            } else {
-                mutatedClass = new MutatedFile.MutatedClass();
-            }
-
-            String mutatedMethodName = mutatedClassElement + "." + mutatedMethodElement;
-
-            MutatedFile.MutatedMethod mutatedMethod;
-            if (mutatedClass.mutatedMethods.containsKey(mutatedMethodName)) {
-                mutatedMethod = mutatedClass.mutatedMethods.get(mutatedMethodName);
-            } else {
-                mutatedMethod = new MutatedFile.MutatedMethod(methodDescriptionElement);
-            }
-
-            MutatedFile.Mutation mutation = new MutatedFile.Mutation();
-            mutation.detected = detectedAttribute;
-            mutation.status = statusAttribute;
-            mutation.lineNo = lineNumberElement;
-            mutation.mutator = mutatorElement;
-            mutation.index = indexElement;
-            mutation.description = descriptionElement;
-
-            if (mutation.detected && killingTestElement.length() > 0) {
-                MutatedFile.KillingTest killingTest = new MutatedFile.KillingTest();
-                killingTest.testMethod = killingTestElement.substring(0, killingTestElement.lastIndexOf("("));
-                killingTest.testFile = killingTestElement.substring(killingTestElement.lastIndexOf("(") + 1, killingTestElement.length() - 1) + ".java";
-                mutation.killingTest = killingTest;
-            } else {
-                mutation.killingTest = null;
-            }
-
-
-//            if (mutatedFile.changeType.equals("UNCHANGED")) {
-//                mutation.changeStatus = "UNCHANGED";
-//            } else if ("AC".contains(mutatedFile.changeType)) {
-//                mutation.changeStatus = "ADDED";
-//            } else if ("MR".contains(mutatedFile.changeType)) {
-//                mutation.changeStatus = changedFiles.get(mutatedFileName).newFile.get(mutation.lineNo).status;
-//            } else {
-//                // unexpected
-//                System.out.println("SOMETHING'S BROKEN!!!");
-//            }
-
-
-            if (mutatedMethod.mutations.contains(mutation)) {
-                throw new Exception("This shouldn't happen! It means that the mutation is duplicated.");
-            } else {
-                mutatedMethod.mutations.add(mutation);
-            }
-
-            mutatedClass.mutatedMethods.put(mutatedMethodName, mutatedMethod);
-            mutatedFile.mutatedClasses.put(mutatedClassElement, mutatedClass);
-
-            mutatedFiles.put(mutatedFileName, mutatedFile);
-
-        }
-
-        PitOutput pitOutput = new PitOutput(currentCommitHash, mutatedFiles);
-
-        outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-
-        String pitOutputFileName = pitOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
-                (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
-        String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
-
-//        pitJSONHandler.saveToJSON(pitOutput, pitOutputPath);
-        jsonHandler.savePitToJSON(pitOutput, pitOutputPath);
-
-
-    }
-
-
-    @SuppressWarnings("unchecked")
     private void runGitDiff() throws Exception {
 
         // git diff name-status between previous and current commit
         List<String> nameStatusList = gitDiffNameStatus();
 
-        HashMap<String, ChangedFile> changedFiles = null;
+        changedFiles = null;
 
         if (nameStatusList.size() == 0) {
 
@@ -749,15 +640,14 @@ class MainWorker implements Worker {
 
         DiffOutput diffOutput = new DiffOutput(parentCommitHash, currentCommitHash, changedFiles);
 
+        outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+
         // Write output file with results of git diff
         String diffOutputFileName = diffOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
                 (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
         String diffOutputPath = Paths.get(outputPath, diffOutputFileName).toString();
 
-//        diffJSONHandler.saveToJSON(diffOutput, diffOutputPath);
         jsonHandler.saveDifToJSON(diffOutput, diffOutputPath);
-
-
     }
 
 
@@ -773,6 +663,7 @@ class MainWorker implements Worker {
         System.out.println("Mapping of line changes:");
         System.out.println("OLD" + paddingSpaces + ": NEW" + paddingSpaces + ":");
 
+        // TODO Decide whether to include map output line numbers
 //        int lineNo = 0;
 
         for (String mapLine : mapFileLines) {
@@ -805,6 +696,154 @@ class MainWorker implements Worker {
 
         System.out.println();
 
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private void runPitMutationTesting() throws Exception {
+
+        File tempPom = createTempPom(projectPath, pomFile);
+
+        invocationRequest.setPomFile(tempPom);
+        InvocationResult result = mavenInvoker.execute(invocationRequest);
+
+        tempPom.delete();
+
+        if (result.getExitCode() != 0) {
+            if (result.getExecutionException() != null) {
+                throw new Exception("Maven invocation failed.", result.getExecutionException());
+            } else {
+                throw new Exception("Maven invocation failed. Exit code: " + result.getExitCode());
+            }
+        }
+
+        System.out.println("\n");
+
+        // Path latestPitReportPath = getLatestPitReportPath(pitReportsPath, pitReportsPathRelative);
+        String pitMutationsReport = Paths.get(projectPath, pitReportsPath, pitMutationsFile).toString();
+
+        Document xmlDoc = documentBuilder.parse(new File(pitMutationsReport));
+        NodeList mutationsList = xmlDoc.getElementsByTagName("mutation");
+
+        int hashMapCapacity = (int) (mutationsList.getLength() * 1.3);
+        HashMap<String, MutatedFile> mutatedFiles = new HashMap<>(hashMapCapacity);
+
+        for (int i = 0; i < mutationsList.getLength(); ++i) {
+
+            Element mutationElement = (Element) mutationsList.item(i);
+            boolean detectedAttribute = Boolean.valueOf(mutationElement.getAttribute("detected"));
+            String statusAttribute = mutationElement.getAttribute("status");
+
+            String sourceFileElement = mutationElement.getElementsByTagName("sourceFile").item(0).getTextContent();
+            String mutatedClassElement = mutationElement.getElementsByTagName("mutatedClass").item(0).getTextContent();
+            String mutatedMethodElement = mutationElement.getElementsByTagName("mutatedMethod").item(0).getTextContent();
+            String methodDescriptionElement = mutationElement.getElementsByTagName("methodDescription").item(0).getTextContent();
+            int lineNumberElement = Integer.valueOf(mutationElement.getElementsByTagName("lineNumber").item(0).getTextContent());
+            String mutatorElement = mutationElement.getElementsByTagName("mutator").item(0).getTextContent();
+            int indexElement = Integer.valueOf(mutationElement.getElementsByTagName("index").item(0).getTextContent());
+            String killingTestElement = mutationElement.getElementsByTagName("killingTest").item(0).getTextContent();
+            String descriptionElement = mutationElement.getElementsByTagName("description").item(0).getTextContent();
+
+            String packagePath = mutatedClassElement.substring(0, mutatedClassElement.lastIndexOf("."));
+            packagePath = packagePath.replace(".", "/");
+
+            String mutatedFileName = mavenJavaMainSrcPath + "/" + packagePath + "/" + sourceFileElement;
+
+            MutatedFile mutatedFile;
+            if (mutatedFiles.containsKey(mutatedFileName)) {
+                mutatedFile = mutatedFiles.get(mutatedFileName);
+            } else {
+                mutatedFile = new MutatedFile();
+
+                if (!isEndCommit) {
+                    if (changedFiles.containsKey(mutatedFileName)) {
+                        mutatedFile.changeType = changedFiles.get(mutatedFileName).changeType;
+                    } else {
+                        mutatedFile.changeType = "UNCHANGED";
+                    }
+                } else {
+                    mutatedFile.changeType = "N/A";
+                }
+            }
+
+            MutatedFile.MutatedClass mutatedClass;
+            if (mutatedFile.mutatedClasses.containsKey(mutatedClassElement)) {
+                mutatedClass = mutatedFile.mutatedClasses.get(mutatedClassElement);
+            } else {
+                mutatedClass = new MutatedFile.MutatedClass();
+            }
+
+            String mutatedMethodName = mutatedClassElement + "." + mutatedMethodElement;
+
+            MutatedFile.MutatedMethod mutatedMethod;
+            if (mutatedClass.mutatedMethods.containsKey(mutatedMethodName)) {
+                mutatedMethod = mutatedClass.mutatedMethods.get(mutatedMethodName);
+            } else {
+                mutatedMethod = new MutatedFile.MutatedMethod(methodDescriptionElement);
+            }
+
+            MutatedFile.Mutation mutation = new MutatedFile.Mutation();
+            mutation.detected = detectedAttribute;
+            mutation.status = statusAttribute;
+            mutation.lineNo = lineNumberElement;
+            mutation.mutator = mutatorElement;
+            mutation.index = indexElement;
+            mutation.description = descriptionElement;
+
+            if (mutation.detected && killingTestElement.length() > 0) {
+                MutatedFile.KillingTest killingTest = new MutatedFile.KillingTest();
+                killingTest.testMethod = killingTestElement.substring(0, killingTestElement.lastIndexOf("("));
+                killingTest.testFile = killingTestElement.substring(killingTestElement.lastIndexOf("(") + 1, killingTestElement.length() - 1) + ".java";
+                mutation.killingTest = killingTest;
+            } else {
+                mutation.killingTest = null;
+            }
+
+            if (!isEndCommit) {
+                if (mutatedFile.changeType.equals("UNCHANGED")) {
+
+                    //TODO asses and address the issue of mutations in unchanged files
+                    // it is incorrect to assume that mutations in unchanged files are also unchanged;
+                    // mutations in unchanged files may change due to changes in test files
+
+                    // this is not a correct assumption
+                    mutation.changeStatus = "UNCHANGED";
+
+                } else if ("AC".contains(mutatedFile.changeType)) {
+                    mutation.changeStatus = "ADDED";
+                } else if ("MR".contains(mutatedFile.changeType)) {
+                    mutation.changeStatus = changedFiles.get(mutatedFileName).newFile.get(mutation.lineNo).status;
+                } else {
+                    // unexpected: unknown and unhandled change type
+                    System.err.println("runPitMutationTesting(): unknown change type found: " + mutatedFile.changeType);
+                    mutation.changeStatus = mutatedFile.changeType;
+                }
+            } else {
+                mutation.changeStatus = "N/A";
+            }
+
+            if (mutatedMethod.mutations.contains(mutation)) {
+                throw new Exception("This shouldn't happen! It means that the mutation is duplicated.");
+            } else {
+                mutatedMethod.mutations.add(mutation);
+            }
+
+            mutatedClass.mutatedMethods.put(mutatedMethodName, mutatedMethod);
+            mutatedFile.mutatedClasses.put(mutatedClassElement, mutatedClass);
+
+            mutatedFiles.put(mutatedFileName, mutatedFile);
+
+        }
+
+        PitOutput pitOutput = new PitOutput(currentCommitHash, mutatedFiles);
+
+        outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+
+        String pitOutputFileName = pitOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
+                (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
+        String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
+
+        jsonHandler.savePitToJSON(pitOutput, pitOutputPath);
     }
 
 
@@ -945,8 +984,8 @@ class MainWorker implements Worker {
         //commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError());
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
         return String.join("", commandExecutor.getStandardOutput());
     }
@@ -965,8 +1004,8 @@ class MainWorker implements Worker {
         //commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError());
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
         return pitStatBranch;
     }
@@ -982,8 +1021,8 @@ class MainWorker implements Worker {
 //        commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError()));
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
     }
 
 
@@ -997,8 +1036,8 @@ class MainWorker implements Worker {
 //        commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError()));
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
     }
 
 
@@ -1013,8 +1052,8 @@ class MainWorker implements Worker {
 //        commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError()));
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
     }
 
 
@@ -1027,8 +1066,8 @@ class MainWorker implements Worker {
 //        commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError()));
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
         return commandExecutor.getStandardOutput();
     }
@@ -1053,15 +1092,12 @@ class MainWorker implements Worker {
 
             } else {
 
-                String generationString = commit.substring(1);
+                String generationString = tail.substring(1);
                 int generation = 0;
 
                 try {
-
                     generation = Integer.valueOf(generationString);
-
                     if (generation < 0) throw new NumberFormatException();
-
                 } catch (NumberFormatException e) {
                     System.out.println("The generation you specified is invalid: " + generationString);
                     System.out.println("Tip: the generation should be a positive integer");
@@ -1103,13 +1139,13 @@ class MainWorker implements Worker {
         command = command.replace("<revParseOptions>", "");
         command = command + commit;
 
-        //commandExecutor.execute(command, true);
+//        commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError());
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
-        return String.join("", commandExecutor.getStandardOutput());
+        return commandExecutor.getStandardOutput().get(0);
     }
 
 
@@ -1149,8 +1185,8 @@ class MainWorker implements Worker {
         //commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError());
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
         return commandExecutor.getStandardOutput();
     }
