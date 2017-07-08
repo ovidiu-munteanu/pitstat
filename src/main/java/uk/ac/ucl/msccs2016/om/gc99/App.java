@@ -1,7 +1,12 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
+import org.apache.commons.lang3.SystemUtils;
+
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -13,29 +18,26 @@ public class App {
 
         System.out.println();
 
-        String projPath = "";
+        String projectPath = "";
         String pitStatReportsPath = "target/pitstat-reports";
         boolean pitStatReportsPathRelative = true;
-        boolean noTimestamp = false;
-        String newCommit = "";
-        String oldCommit = "HEAD";
+        boolean createTimestampFolder = true;
+        String startCommit = "";
+        String endCommit = null;
         int maxRollbacks = 1;
 
-        boolean endCommitArg = false;
+        boolean endCommitArg = false, rollbacksArg = false, beginingOfTime;
 
-//        String projPath = "D:/X/github/joda-time";
-////        String projPath = "D:/X/projIdea/MavenTest";
-////        String projPath = "D:/X/github/commons-collections";
-//
-//        String pitStatReportsPath = "target/pitstat-reports";
-//        boolean pitStatReportsPathRelative = true;
-//        boolean noTimestamp = false;
-//
-//        String newCommit = "HEAD";
-//        String oldCommit = "HEAD~";
-//
-//        int maxRollbacks = 50;
+        boolean shutdown = false;
 
+//        String projectPath = "D:/X/github/joda-time";
+//        String projectPath = "D:/X/projIdea/MavenTest";
+//        String projectPath = "D:/X/github/commons-collections";
+
+        if (args.length == 0) {
+            System.out.println(getResourceFileAsString("help.txt"));
+            App.systemExit(0);
+        }
 
         int i = -1;
         while (++i < args.length) {
@@ -43,113 +45,137 @@ public class App {
             String arg = args[i];
 
             switch (arg) {
+                case "-PP":
                 case "--project-path":
                     try {
-                        projPath = args[++i];
+                        projectPath = args[++i];
                     } catch (ArrayIndexOutOfBoundsException e) {
                         System.out.println("No project path specified.");
-                        System.exit(99);
+                        systemExit(99);
                     }
-                    switch (projectExists(projPath)) {
+                    switch (projectExists(projectPath)) {
                         case 1:
-                            System.out.println("Cannot access the specified project directory: " + projPath);
-                            System.exit(1);
+                            System.out.println("Cannot access the specified project directory: " + projectPath);
+                            systemExit(1);
                         case 2:
-                            System.out.println("The specified project path is not a directory: " + projPath);
-                            System.exit(2);
+                            System.out.println("The specified project path is not a directory: " + projectPath);
+                            systemExit(2);
                         case 3:
-                            System.out.println("Cannot access pom.xml in the specified project directory: " + projPath);
-                            System.exit(3);
+                            System.out.println("Cannot access pom.xml in the specified project directory: " + projectPath);
+                            systemExit(3);
                         case 4:
-                            System.out.println("Cannot write inside the specified reports directory: " + projPath);
-                            System.exit(4);
+                            System.out.println("Cannot write inside the specified reports directory: " + projectPath);
+                            systemExit(4);
                     }
                     break;
+                case "-RP":
                 case "--reports-path":
                     try {
                         pitStatReportsPath = args[++i];
                     } catch (ArrayIndexOutOfBoundsException e) {
                         System.out.println("No reports path specified.");
-                        System.exit(99);
+                        systemExit(99);
                     }
                     switch (reportsPathOK(pitStatReportsPath)) {
                         case 1:
-                            System.out.println("Cannot access the specified reports directory: " + projPath);
-                            System.exit(1);
+                            System.out.println("Cannot access the specified reports directory: " + projectPath);
+                            systemExit(1);
                         case 2:
-                            System.out.println("The specified reports path is not a directory: " + projPath);
-                            System.exit(2);
+                            System.out.println("The specified reports path is not a directory: " + projectPath);
+                            systemExit(2);
                         case 3:
-                            System.out.println("Cannot write inside the specified reports directory: " + projPath);
-                            System.exit(4);
+                            System.out.println("Cannot write inside the specified reports directory: " + projectPath);
+                            systemExit(4);
                     }
                     pitStatReportsPathRelative = false;
                     break;
+                case "-SC":
                 case "--start-commit":
                     try {
-                        newCommit = args[++i];
+                        startCommit = args[++i];
                     } catch (ArrayIndexOutOfBoundsException e) {
                         System.out.println("No start commit specified.");
-                        System.exit(99);
+                        systemExit(99);
                     }
+                    checkCommitLength(startCommit);
                     break;
+                case "-EC":
                 case "--end-commit":
+                    if (rollbacksArg) {
+                        System.out.println("Cannot specify both end commit and rollbacks.\nPlease try again using only one of the two options.");
+                        systemExit(99);
+                    }
                     try {
-                        oldCommit = args[++i];
+                        endCommit = args[++i];
                     } catch (ArrayIndexOutOfBoundsException e) {
                         System.out.println("No end commit specified.");
-                        System.exit(99);
+                        systemExit(99);
                     }
+                    checkCommitLength(endCommit);
+                    maxRollbacks = -1;
                     endCommitArg = true;
                     break;
+                case "-R":
                 case "--rollbacks":
+                    if (endCommitArg) {
+                        System.out.println("Cannot specify both rollbacks and end commit.\nPlease try again using only one of the two options.");
+                        systemExit(99);
+                    }
                     String rollbacksString = null;
                     try {
                         rollbacksString = args[++i];
-                        maxRollbacks = Integer.valueOf(rollbacksString);
-                        if (maxRollbacks < 1) throw new InvalidParameterException();
+                        if (rollbacksString.equals("max")) {
+                            maxRollbacks = Integer.MAX_VALUE;
+                        } else {
+                            maxRollbacks = Integer.valueOf(rollbacksString);
+                            if (maxRollbacks < 1) throw new InvalidParameterException();
+                        }
                     } catch (ArrayIndexOutOfBoundsException e) {
                         System.out.println("No end commit specified.");
-                        System.exit(99);
+                        systemExit(99);
                     } catch (NumberFormatException e) {
                         System.out.println("Invalid number of rollbacks: " + rollbacksString);
-                        System.exit(5);
+                        systemExit(5);
                     } catch (InvalidParameterException e) {
                         System.out.println("Invalid number of rollbacks. Cannot be less than 1.");
-                        System.exit(6);
+                        systemExit(6);
                     }
-                    if (endCommitArg) System.out.println("WARNING: end-commit overrides rollbacks; specified rollbacks value is ignored.\n");
+                    rollbacksArg = true;
                     break;
+                case "-NT":
                 case "--no-timestamp":
-                    noTimestamp = true;
+                    createTimestampFolder = false;
+                    break;
+                case "-S":
+                case "--shutdown":
+                    shutdown = true;
                     break;
                 default:
                     System.out.println("Invalid argument: " + arg);
-                    System.exit(99);
+                    systemExit(99);
             }
         }
 
-
-//        System.out.println("projPath: " + projPath);
-//        System.out.println("pitStatReportsPath: " + pitStatReportsPath);
-//        System.out.println("pitStatReportsPathRelative: " + pitStatReportsPathRelative);
-//        System.out.println("noTimestamp: " + noTimestamp);
-//        System.out.println("oldCommit: " + oldCommit);
-//        System.out.println("newCommit: " + newCommit);
-//        System.out.println("maxRollbacks: " + maxRollbacks);
-
+        if (startCommit.equals(endCommit)) {
+            System.out.println("The start and end commits cannot be the same.");
+            systemExit(99);
+        }
 
         MainWorker worker = new MainWorker(
-                projPath,
+                projectPath,
                 pitStatReportsPath,
                 pitStatReportsPathRelative,
-                noTimestamp,
-                oldCommit,
-                newCommit,
+                createTimestampFolder,
+                startCommit,
+                endCommit,
                 maxRollbacks
         );
 
         worker.doWork();
+
+
+        if (shutdown) Runtime.getRuntime().exec(systemShutdownCommand(30));
+        System.exit(0);
 
     }
 
@@ -185,5 +211,68 @@ public class App {
         return true;
     }
 
+    private static void checkCommitLength(String commit) {
+        if (commit.length() < 4) {
+            System.out.println("The commit reference you entered is too short.\nTip: a commit reference is at least 4 characters long, e.g. HEAD");
+            systemExit(99);
+        } else if (commit.length() > 40) {
+            System.out.println("The commit reference you entered is too long.\nTip: a full commit hash is 40 characters long");
+            systemExit(99);
+        }
+    }
+
+    private static String getResourceFileAsString(String resourceFile) {
+        BufferedReader bufferedReader = null;
+        StringBuilder stringBuilder = new StringBuilder();
+
+        InputStream inputStream = App.class.getClassLoader().getResourceAsStream(resourceFile);
+
+        try {
+            String inputLine;
+            bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+            while ((inputLine = bufferedReader.readLine()) != null) stringBuilder.append(inputLine);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (bufferedReader != null)
+                try {
+                    bufferedReader.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+        }
+
+        return stringBuilder.toString();
+    }
+
+    static void systemExit(int exitCode) {
+        System.out.println();
+        System.exit(exitCode);
+    }
+
+    private static String systemShutdownCommand(int timeout) {
+        String shutdownCommand = null;
+
+        if (SystemUtils.IS_OS_AIX)
+            shutdownCommand = "shutdown -Fh " + timeout;
+        else if (SystemUtils.IS_OS_FREE_BSD ||
+                SystemUtils.IS_OS_LINUX ||
+                SystemUtils.IS_OS_MAC ||
+                SystemUtils.IS_OS_MAC_OSX ||
+                SystemUtils.IS_OS_NET_BSD ||
+                SystemUtils.IS_OS_OPEN_BSD)
+            shutdownCommand = "shutdown -h " + timeout;
+        else if (SystemUtils.IS_OS_HP_UX)
+            shutdownCommand = "shutdown -hy " + timeout;
+        else if (SystemUtils.IS_OS_IRIX)
+            shutdownCommand = "shutdown -y -g " + timeout;
+        else if (SystemUtils.IS_OS_SOLARIS ||
+                SystemUtils.IS_OS_SUN_OS)
+            shutdownCommand = "shutdown -y -i5 -g" + timeout;
+        else if (SystemUtils.IS_OS_WINDOWS)
+            shutdownCommand = "shutdown -s -t " + timeout;
+
+        return shutdownCommand;
+    }
 
 }

@@ -24,19 +24,21 @@ interface Worker {
 
     String pomFile = "pom.xml";
 
-    String mvnSrcPath = "src/main/java";
+    String mavenJavaMainSrcPath = "src/main/java";
 
     String pitReportsPath = "target/pit-reports";
     String pitMutationsFile = "mutations.xml";
+
+    String diffOutputBaseFileName = "diffOutput-<date-hash>.json";
+    String pitOutputBaseFileName = "pitOutput-<date-hash>.json";
+
 
     String mvnGoalTest = " test ";
     String mvnGoalPitest = " org.pitest:pitest-maven:mutationCoverage ";
 
 
-
-    String diffOutputBaseFileName = "diffOutput-<date-hash>.json";
-    String pitOutputBaseFileName = "pitOutput-<date-hash>.json";
-
+    String headCommit = " HEAD ";
+    String parentOfHeadCommit = " HEAD~ ";
 
 
     String gitOptionsPlaceholder = "<gitOptions>";
@@ -56,7 +58,6 @@ interface Worker {
 
     String gitResetCommand  ="git <gitOptions> reset <resetOptions> ";
     String resetHardOption =  " --hard ";
-    String parentCommit = " HEAD~ ";
 
     String gitDiffCommand = "git <gitOptions> diff <diffOptions> <oldCommit> <oldFile> <newCommit> <newFileName>";
 
@@ -67,4 +68,5 @@ interface Worker {
     String diffOptionNoContext = " -U0 ";
     String diffOptionFindCopies = " -C ";
     String diffOptionFindCopiesHarder = " -C -C ";
+
 }

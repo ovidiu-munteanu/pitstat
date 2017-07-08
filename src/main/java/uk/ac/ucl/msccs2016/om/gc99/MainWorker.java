@@ -45,17 +45,18 @@ class MainWorker implements Worker {
     private String projectPath;
     private String pitStatReportsPath;
     private boolean pitStatReportsPathRelative;
-    private boolean noTimestamp;
-    private String oldCommit;
-    private String newCommit;
+    private boolean createTimestampFolder;
+    private String startCommit;
+    private String endCommit;
     private int maxRollbacks;
 
+    private List<String> commitsList;
 
     private String originalGitBranch;
     private String pitStatBranch;
 
-    private String newCommitHash;
-    private String oldCommitHash;
+    private String currentCommitHash;
+    private String parentCommitHash;
 
     private String startTime;
     private String outputTime;
@@ -66,9 +67,9 @@ class MainWorker implements Worker {
     MainWorker(String projectPath,
                String pitStatReportsPath,
                boolean pitStatReportsPathRelative,
-               boolean noTimestamp,
-               String oldCommit,
-               String newCommit,
+               boolean createTimestampFolder,
+               String startCommit,
+               String endCommit,
                int maxRollbacks)
             throws Exception {
 
@@ -78,9 +79,9 @@ class MainWorker implements Worker {
         this.projectPath = projectPath;
         this.pitStatReportsPath = pitStatReportsPath;
         this.pitStatReportsPathRelative = pitStatReportsPathRelative;
-        this.noTimestamp = noTimestamp;
-        this.oldCommit = oldCommit;
-        this.newCommit = newCommit;
+        this.createTimestampFolder = createTimestampFolder;
+        this.startCommit = startCommit;
+        this.endCommit = endCommit;
         this.maxRollbacks = maxRollbacks;
 
 
@@ -101,328 +102,93 @@ class MainWorker implements Worker {
 
     void doWork() throws Exception {
 
-        this.originalGitBranch = getGitBranch(newCommit);
-        this.pitStatBranch = checkoutPitStatBranch();
+        originalGitBranch = getGitBranch("HEAD");
+        commitsList = getCommitsList();
 
-        List<String> commitsList = getCommitsList();
-        String initialCommitHash = commitsList.get(commitsList.size() - 1);
+        String startCommitHash, endCommitHash;
 
-        boolean outputFolderCreated = !pitStatReportsPathRelative && noTimestamp;
-        boolean isInitialCommit;
+        startCommitHash = parseCommit(startCommit);
+        int indexOfStartCommit = (startCommit.equals("") ? -1 : commitsList.indexOf(startCommitHash));
 
-        int currentRollback = 0;
+        if (maxRollbacks > 0 && endCommit == null) {
 
-        do {
+            int indexOfEndCommit = (maxRollbacks == Integer.MAX_VALUE) ?
+                    (commitsList.size() - 1) : (indexOfStartCommit + maxRollbacks);
 
-            System.out.println("Rollback: " + currentRollback);
-
-            newCommitHash = getCommitHash(newCommit);
-            oldCommitHash = getCommitHash(oldCommit);
-
-            isInitialCommit = newCommitHash.equals(initialCommitHash);
-
-            System.out.println("New commit hash: " + newCommitHash);
-            System.out.println("Old commit hash: " + oldCommitHash);
-            System.out.println();
-
-            if (!outputFolderCreated) {
-                int createOutputFolderResult = createOutputFolder();
-                if (createOutputFolderResult != 0) System.exit(createOutputFolderResult);
-                outputFolderCreated = true;
+            if (indexOfEndCommit > (commitsList.size() - 1)) {
+                System.out.println("Error: the number of rollbacks is greater than the history of this branch.");
+                App.systemExit(99);
             }
 
+            endCommitHash = commitsList.get(indexOfEndCommit);
+
+        } else {
+
+            if (endCommit.equals("initial-commit")) {
+                endCommitHash = commitsList.get(commitsList.size() - 1);
+            } else {
+                endCommitHash = parseCommit(endCommit);
+            }
+
+            maxRollbacks = commitsList.indexOf(endCommitHash) - indexOfStartCommit;
+        }
+
+
+        if (maxRollbacks < 0) {
+            System.out.println("Error: start commit is older than end commit.");
+            System.out.println("Tip: pitStat rolls back from the start commit towards the end commit");
+            App.systemExit(99);
+        }
+
+
+        if (pitStatReportsPathRelative || createTimestampFolder) {
+            int createOutputFolderResult = createOutputFolder();
+            if (createOutputFolderResult != 0) App.systemExit(createOutputFolderResult);
+        }
+
+
+        pitStatBranch = checkoutPitStatBranch();
+
+        if (indexOfStartCommit > 0) rollBackTo(startCommitHash);
+
+        currentCommitHash = startCommitHash;
+        parentCommitHash = commitsList.get(indexOfStartCommit + 1);
+
+        int currentRollback = 0;
+        boolean isEndCommit, atStagedChanges = startCommit.equals("");
+
+        do {
+            System.out.println("Rollback: " + currentRollback);
+
+            System.out.println("Current commit hash: " +
+                    (currentCommitHash.length() > 0 ? currentCommitHash : "no hash, looking at staged changes"));
+            System.out.println("Parent  commit hash: " + parentCommitHash);
+            System.out.println();
 
             runPitMutationTesting();
 
+            isEndCommit = currentCommitHash.equals(endCommitHash);
 
-            if (!isInitialCommit) runGitDiff();
+            if (!isEndCommit) {
 
+                runGitDiff();
 
-            if (!isInitialCommit) {
-                rollBack(parentCommit);
+                if (atStagedChanges) {
+                    atStagedChanges = false;
+                } else {
+                    rollBackTo(parentOfHeadCommit);
+                }
+
+                currentCommitHash = getCommitHash(headCommit);
+                parentCommitHash = getCommitHash(parentOfHeadCommit);
+
                 currentRollback++;
             }
 
-        } while (!isInitialCommit && currentRollback <= maxRollbacks);
+        } while (!isEndCommit && currentRollback <= maxRollbacks);
 
         checkoutOriginalBranch();
         deletePitStatBranch();
-
-    }
-
-
-    @SuppressWarnings("unchecked")
-    private void runGitDiff() throws Exception {
-
-        // git diff name-status between previous and current commit
-        List<String> nameStatusList = gitDiffNameStatus();
-
-        int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
-        HashMap<String, ChangedFile> changedFiles = new HashMap<>(hashMapCapacity);
-
-        for (String nameStatusLine : nameStatusList) {
-
-            String diffStatus = Character.toString(nameStatusLine.charAt(0));
-
-            String[] splitLine = nameStatusLine.split("\\s+");
-
-            String changedFile = splitLine[1], newFile = null;
-
-            switch (diffStatus) {
-                case "A":
-                    System.out.println("Added file:    " + changedFile);
-                    break;
-                case "D":
-                    System.out.println("Deleted file:  " + changedFile);
-                    break;
-                case "M":
-                    System.out.println("Modified file: " + changedFile);
-                    break;
-                case "C":
-                    newFile = splitLine[2];
-                    System.out.println("Copied file:   " + changedFile + " --> " + newFile);
-                    break;
-                case "R":
-                    newFile = splitLine[2];
-                    System.out.println("Renamed file:  " + changedFile + " --> " + newFile);
-                    break;
-                default:
-                    System.out.print("Change type " + diffStatus + " unsupported: ");
-                    for (int i = 1; i < splitLine.length; i++) {
-                        if (i > 1) System.out.print(" --> ");
-                        System.out.print(splitLine[i]);
-                    }
-                    System.out.println();
-            }
-
-            if (newFile == null && !diffStatus.equals("D")) newFile = changedFile;
-            if (diffStatus.equals("A")) changedFile = null;
-
-            List<LineOfCode> oldFileLines = null, newFileLines = null;
-
-            if ("AD".contains(diffStatus)) {
-
-                System.out.println();
-
-            } else if ("MCR".contains(diffStatus)) {
-
-                List<String> mapFileLines = Files.readAllLines(Paths.get(projectPath, newFile), StandardCharsets.UTF_8);
-                int mapFileLinePointer = 1;
-
-                oldFileLines = new ArrayList<>();
-                newFileLines = new ArrayList<>();
-
-                // git diff between previous and current version of the specific file
-                List<String> diffOutputLines = gitDiff(changedFile, newFile);
-
-                ListIterator<String> diffOutputIterator = diffOutputLines.listIterator();
-
-                // Skip git diff header lines, i.e. skip until the first line starting with @@ is found
-                while (diffOutputIterator.hasNext() && !diffOutputIterator.next().startsWith("@@")) ;
-
-                // If the file was copied or renamed but not modified (100% similarity) then the while loop above
-                // will have reached the end of the diff output so we need to continue with the next changed file
-                if (!diffOutputIterator.hasNext()) {
-                    ChangedFile changedFileEntry = new ChangedFile(changedFile, newFile, diffStatus, null, null);
-                    changedFiles.put(changedFile, changedFileEntry);
-                    continue;
-                }
-
-                // We consumed the "@@" line in the while loop above so we need to go back one iteration
-                diffOutputIterator.previous();
-
-                int diffOldPointer, diffOldLinesNo, diffNewPointer, diffNewLinesNo;
-                int oldFileLinePointer = 1, newFileLinePointer = 1, lineOffset = 0;
-
-                while (diffOutputIterator.hasNext()) {
-
-                    String diffLine = diffOutputIterator.next();
-
-                    if (diffLine.contains("\\ No newline at end of file")) continue;
-
-                    if (diffLine.startsWith("@@")) {
-
-                        // Strip down diff "@@" lines and add ",1" where the number of lines is omitted by default
-                        // eg.  @@ -23 +23 @@       becomes     -23,1 +23,1
-                        //      @@ -23 +22,0 @@     becomes     -23,1 +22,0
-                        // etc.
-                        diffLine = diffLine.substring(3, diffLine.lastIndexOf("@@") - 1);
-                        if (diffLine.lastIndexOf(",") < diffLine.indexOf("+")) diffLine = diffLine + ",1";
-                        if (diffLine.indexOf(",") == diffLine.lastIndexOf(","))
-                            diffLine = new StringBuilder(diffLine).insert(diffLine.indexOf("+") - 1, ",1").toString();
-
-                        diffLine = diffLine.replace("-", "");
-                        diffLine = diffLine.replace("+", "");
-                        String split[] = diffLine.split(",|\\s");
-
-
-                        diffOldPointer = Integer.valueOf(split[0]);
-                        diffOldLinesNo = Integer.valueOf(split[1]);
-                        diffNewPointer = Integer.valueOf(split[2]);
-                        diffNewLinesNo = Integer.valueOf(split[3]);
-
-                        // actualNewPointer keeps track of the starting location of changed lines in the map file
-                        // lifeOffset ???
-                        // TODO remember how this works and add full comments
-                        // there seems to be an inconsistency in the way git diff reports the addition of a single line
-                        // and the pointer to the new line, i.e. if a single line is added it actually reports zero
-                        // lines and the pointer is one line behind; the following line of code adjusts the line
-                        // pointer accordingly
-                        int actualNewPointer = (diffNewLinesNo == 0 ? diffNewPointer + 1 : diffNewPointer) + lineOffset;
-
-                        // check if there are any unchanged lines of code between the last line added to the map file
-                        // and the current changed line, and if so add them to the map file as well as to the old and
-                        // new file tracker
-                        if (mapFileLinePointer < actualNewPointer) {
-
-                            while (mapFileLinePointer < actualNewPointer) {
-
-                                String unchangedLine = mapFileLines.get(mapFileLinePointer - 1);
-
-                                // add the unchanged line of code to both the old and new file trackers
-                                LineOfCode lineOfCode = new LineOfCode(unchangedLine, "UNCHANGED");
-                                oldFileLines.add(lineOfCode);
-                                newFileLines.add(lineOfCode);
-
-                                String numberedLine = oldFileLinePointer + ":" + newFileLinePointer + ": " + unchangedLine;
-                                mapFileLines.set(mapFileLinePointer - 1, numberedLine);
-
-                                oldFileLinePointer++;
-                                newFileLinePointer++;
-
-                                mapFileLinePointer++;
-                            }
-
-                        }
-
-                    } else if (diffLine.startsWith("-")) {
-
-                        String oldLine = diffLine.substring(1);
-
-                        oldFileLines.add(new LineOfCode(oldLine, "DELETED"));
-
-                        diffLine = oldFileLinePointer + ":0: " + oldLine;
-
-                        mapFileLines.add(mapFileLinePointer - 1, diffLine);
-
-                        mapFileLinePointer++;
-                        oldFileLinePointer++;
-                        lineOffset++;
-
-                    } else if (diffLine.startsWith("+")) {
-
-                        String newLine = diffLine.substring(1);
-
-                        newFileLines.add(new LineOfCode(newLine, "ADDED"));
-
-                        diffLine = "0:" + newFileLinePointer + ": " + newLine;
-
-
-                        mapFileLines.set(mapFileLinePointer - 1, diffLine);
-
-                        mapFileLinePointer++;
-                        newFileLinePointer++;
-
-                    } else {
-                        // For a copied file git diff also outputs a few lines with details about the source of the
-                        // copy; we don't need this information so we stop parsing and skip over it
-                        break;
-                    }
-                }
-
-                // write out any remaining lines after the last changed line
-                ListIterator<String> mapFileIterator = mapFileLines.listIterator(mapFileLinePointer - 1);
-                while (mapFileIterator.hasNext()) {
-
-                    String unchangedLine = mapFileIterator.next();
-
-                    LineOfCode lineOfCode = new LineOfCode(unchangedLine, "UNCHANGED");
-                    oldFileLines.add(lineOfCode);
-                    newFileLines.add(lineOfCode);
-
-                    String mapFileLine = oldFileLinePointer + ":" + newFileLinePointer + ": " + unchangedLine;
-
-                    mapFileIterator.set(mapFileLine);
-
-                    oldFileLinePointer++;
-                    newFileLinePointer++;
-                }
-
-                printOutDiffMap(mapFileLines);
-
-            } else {
-
-                // TODO handle other file types of file changes?
-            }
-
-            ChangedFile changedFileEntry = new ChangedFile(changedFile, newFile, diffStatus, oldFileLines, newFileLines);
-
-            if (!diffStatus.equals("D")) {
-                changedFiles.put(newFile, changedFileEntry);
-            } else {
-                changedFiles.put(changedFile, changedFileEntry);
-            }
-
-        }
-
-        System.out.println("Modified files: " + nameStatusList.size() + "\n");
-
-        DiffOutput diffOutput = new DiffOutput(oldCommitHash, newCommitHash, changedFiles);
-
-
-        // Write output file with results of git diff
-        String diffOutputFileName = diffOutputBaseFileName.replace("<date-hash>", outputTime + "-" + newCommitHash);
-        String diffOutputPath = Paths.get(outputPath, diffOutputFileName).toString();
-
-
-        jsonHandler.saveToJSON(diffOutput, diffOutputPath);
-
-    }
-
-
-    private void printOutDiffMap(List<String> mapFileLines) {
-
-        // Calculate number of characters to use in formatting of line number based on number of lines in file
-        // i.e. number of characters = 1 + digits in number of lines
-        int digitsNo = Math.max(4, 1 + Integer.toString(mapFileLines.size()).length());
-        String format = "%-" + digitsNo + "d";
-
-        String paddingSpaces = String.join("", Collections.nCopies(digitsNo - 3, " "));
-
-        System.out.println("Mapping of line changes:");
-        System.out.println("OLD" + paddingSpaces + ": NEW" + paddingSpaces + ":");
-
-//        int lineNo = 0;
-
-        for (String mapLine : mapFileLines) {
-
-            int oldLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
-            String oldLineIndicator = oldLineNo == 0 ? "N/E" + paddingSpaces : String.format(format, oldLineNo);
-
-            mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
-
-            int newLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
-            String newLineIndicator = newLineNo == 0 ? "DEL" + paddingSpaces : String.format(format, newLineNo);
-
-            mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
-
-            mapLine = oldLineIndicator + ": " + newLineIndicator + ": " + mapLine;
-
-            // add line colour, i.e. green if added line, red if deleted line
-            if (oldLineNo == 0) {
-                mapLine = ANSI_GREEN + mapLine + ANSI_RESET;
-            } else if (newLineNo == 0) {
-                mapLine = ANSI_RED + mapLine + ANSI_RESET;
-            }
-
-            // TODO Decide whether to include map output line numbers
-//            String mapLineIndicator = String.format(format, ++lineNo);
-//            mapLine = mapLineIndicator + ": " + mapLine;
-
-            System.out.println(mapLine);
-        }
-
-        System.out.println();
 
     }
 
@@ -475,7 +241,7 @@ class MainWorker implements Worker {
             String packagePath = mutatedClassElement.substring(0, mutatedClassElement.lastIndexOf("."));
             packagePath = packagePath.replace(".", "/");
 
-            String mutatedFileName = mvnSrcPath + "/" + packagePath + "/" + sourceFileElement;
+            String mutatedFileName = mavenJavaMainSrcPath + "/" + packagePath + "/" + sourceFileElement;
 
             MutatedFile mutatedFile;
             if (mutatedFiles.containsKey(mutatedFileName)) {
@@ -549,16 +315,302 @@ class MainWorker implements Worker {
 
         }
 
-        PitOutput pitOutput = new PitOutput(newCommitHash, mutatedFiles);
+        PitOutput pitOutput = new PitOutput(currentCommitHash, mutatedFiles);
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
-        String pitOutputFileName = pitOutputBaseFileName.replace("<date-hash>", outputTime + "-" + newCommitHash);
+        String pitOutputFileName = pitOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
+                (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
         String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
 
         jsonHandler.saveToJSON(pitOutput, pitOutputPath);
 
     }
+
+
+    @SuppressWarnings("unchecked")
+    private void runGitDiff() throws Exception {
+
+        // git diff name-status between previous and current commit
+        List<String> nameStatusList = gitDiffNameStatus();
+
+        HashMap<String, ChangedFile> changedFiles = null;
+
+        if (nameStatusList.size() == 0) {
+
+            System.out.println("No difference between " + parentCommitHash + " and " +
+                    (currentCommitHash.equals("") ? "staged changes" : currentCommitHash) + "\n");
+
+        } else {
+
+            int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
+            changedFiles = new HashMap<>(hashMapCapacity);
+
+            for (String nameStatusLine : nameStatusList) {
+
+                String diffStatus = Character.toString(nameStatusLine.charAt(0));
+
+                String[] splitLine = nameStatusLine.split("\\s+");
+
+                String changedFile = splitLine[1], newFile = null;
+
+                switch (diffStatus) {
+                    case "A":
+                        System.out.println("Added file:    " + changedFile);
+                        break;
+                    case "D":
+                        System.out.println("Deleted file:  " + changedFile);
+                        break;
+                    case "M":
+                        System.out.println("Modified file: " + changedFile);
+                        break;
+                    case "C":
+                        newFile = splitLine[2];
+                        System.out.println("Copied file:   " + changedFile + " --> " + newFile);
+                        break;
+                    case "R":
+                        newFile = splitLine[2];
+                        System.out.println("Renamed file:  " + changedFile + " --> " + newFile);
+                        break;
+                    default:
+                        System.out.print("Change type " + diffStatus + " unsupported: ");
+                        for (int i = 1; i < splitLine.length; i++) {
+                            if (i > 1) System.out.print(" --> ");
+                            System.out.print(splitLine[i]);
+                        }
+                        System.out.println();
+                }
+
+                if (newFile == null && !diffStatus.equals("D")) newFile = changedFile;
+                if (diffStatus.equals("A")) changedFile = null;
+
+                List<LineOfCode> oldFileLines = null, newFileLines = null;
+
+                if ("AD".contains(diffStatus)) {
+
+                    System.out.println();
+
+                } else if ("MCR".contains(diffStatus)) {
+
+                    List<String> mapFileLines = Files.readAllLines(Paths.get(projectPath, newFile), StandardCharsets.UTF_8);
+                    int mapFileLinePointer = 1;
+
+                    oldFileLines = new ArrayList<>();
+                    newFileLines = new ArrayList<>();
+
+                    // git diff between previous and current version of the specific file
+                    List<String> diffOutputLines = gitDiff(changedFile, newFile);
+
+                    ListIterator<String> diffOutputIterator = diffOutputLines.listIterator();
+
+                    // Skip git diff header lines, i.e. skip until the first line starting with @@ is found
+                    while (diffOutputIterator.hasNext() && !diffOutputIterator.next().startsWith("@@")) ;
+
+                    // If the file was copied or renamed but not modified (100% similarity) then the while loop above
+                    // will have reached the end of the diff output so we need to continue with the next changed file
+                    if (!diffOutputIterator.hasNext()) {
+                        ChangedFile changedFileEntry = new ChangedFile(changedFile, newFile, diffStatus, null, null);
+                        changedFiles.put(changedFile, changedFileEntry);
+                        continue;
+                    }
+
+                    // We consumed the "@@" line in the while loop above so we need to go back one iteration
+                    diffOutputIterator.previous();
+
+                    int diffOldPointer, diffOldLinesNo, diffNewPointer, diffNewLinesNo;
+                    int oldFileLinePointer = 1, newFileLinePointer = 1, lineOffset = 0;
+
+                    while (diffOutputIterator.hasNext()) {
+
+                        String diffLine = diffOutputIterator.next();
+
+                        if (diffLine.contains("\\ No newline at end of file")) continue;
+
+                        if (diffLine.startsWith("@@")) {
+
+                            // Strip down diff "@@" lines and add ",1" where the number of lines is omitted by default
+                            // eg.  @@ -23 +23 @@       becomes     -23,1 +23,1
+                            //      @@ -23 +22,0 @@     becomes     -23,1 +22,0
+                            // etc.
+                            diffLine = diffLine.substring(3, diffLine.lastIndexOf("@@") - 1);
+                            if (diffLine.lastIndexOf(",") < diffLine.indexOf("+")) diffLine = diffLine + ",1";
+                            if (diffLine.indexOf(",") == diffLine.lastIndexOf(","))
+                                diffLine = new StringBuilder(diffLine).insert(diffLine.indexOf("+") - 1, ",1").toString();
+
+                            diffLine = diffLine.replace("-", "");
+                            diffLine = diffLine.replace("+", "");
+                            String split[] = diffLine.split(",|\\s");
+
+
+                            diffOldPointer = Integer.valueOf(split[0]);
+                            diffOldLinesNo = Integer.valueOf(split[1]);
+                            diffNewPointer = Integer.valueOf(split[2]);
+                            diffNewLinesNo = Integer.valueOf(split[3]);
+
+                            // actualNewPointer keeps track of the starting location of changed lines in the map file
+                            // lifeOffset ???
+                            // TODO remember how this works and add full comments
+                            // there seems to be an inconsistency in the way git diff reports the addition of a single line
+                            // and the pointer to the new line, i.e. if a single line is added it actually reports zero
+                            // lines and the pointer is one line behind; the following line of code adjusts the line
+                            // pointer accordingly
+                            int actualNewPointer = (diffNewLinesNo == 0 ? diffNewPointer + 1 : diffNewPointer) + lineOffset;
+
+                            // check if there are any unchanged lines of code between the last line added to the map file
+                            // and the current changed line, and if so add them to the map file as well as to the old and
+                            // new file tracker
+                            if (mapFileLinePointer < actualNewPointer) {
+
+                                while (mapFileLinePointer < actualNewPointer) {
+
+                                    String unchangedLine = mapFileLines.get(mapFileLinePointer - 1);
+
+                                    // add the unchanged line of code to both the old and new file trackers
+                                    LineOfCode lineOfCode = new LineOfCode(unchangedLine, "UNCHANGED");
+                                    oldFileLines.add(lineOfCode);
+                                    newFileLines.add(lineOfCode);
+
+                                    String numberedLine = oldFileLinePointer + ":" + newFileLinePointer + ": " + unchangedLine;
+                                    mapFileLines.set(mapFileLinePointer - 1, numberedLine);
+
+                                    oldFileLinePointer++;
+                                    newFileLinePointer++;
+
+                                    mapFileLinePointer++;
+                                }
+
+                            }
+
+                        } else if (diffLine.startsWith("-")) {
+
+                            String oldLine = diffLine.substring(1);
+
+                            oldFileLines.add(new LineOfCode(oldLine, "DELETED"));
+
+                            diffLine = oldFileLinePointer + ":0: " + oldLine;
+
+                            mapFileLines.add(mapFileLinePointer - 1, diffLine);
+
+                            mapFileLinePointer++;
+                            oldFileLinePointer++;
+                            lineOffset++;
+
+                        } else if (diffLine.startsWith("+")) {
+
+                            String newLine = diffLine.substring(1);
+
+                            newFileLines.add(new LineOfCode(newLine, "ADDED"));
+
+                            diffLine = "0:" + newFileLinePointer + ": " + newLine;
+
+
+                            mapFileLines.set(mapFileLinePointer - 1, diffLine);
+
+                            mapFileLinePointer++;
+                            newFileLinePointer++;
+
+                        } else {
+                            // For a copied file git diff also outputs a few lines with details about the source of the
+                            // copy; we don't need this information so we stop parsing and skip over it
+                            break;
+                        }
+                    }
+
+                    // write out any remaining lines after the last changed line
+                    ListIterator<String> mapFileIterator = mapFileLines.listIterator(mapFileLinePointer - 1);
+                    while (mapFileIterator.hasNext()) {
+
+                        String unchangedLine = mapFileIterator.next();
+
+                        LineOfCode lineOfCode = new LineOfCode(unchangedLine, "UNCHANGED");
+                        oldFileLines.add(lineOfCode);
+                        newFileLines.add(lineOfCode);
+
+                        String mapFileLine = oldFileLinePointer + ":" + newFileLinePointer + ": " + unchangedLine;
+
+                        mapFileIterator.set(mapFileLine);
+
+                        oldFileLinePointer++;
+                        newFileLinePointer++;
+                    }
+
+                    printOutDiffMap(mapFileLines);
+
+                } else {
+
+                    // TODO handle other file types of file changes?
+                }
+
+                ChangedFile changedFileEntry = new ChangedFile(changedFile, newFile, diffStatus, oldFileLines, newFileLines);
+
+                if (!diffStatus.equals("D")) {
+                    changedFiles.put(newFile, changedFileEntry);
+                } else {
+                    changedFiles.put(changedFile, changedFileEntry);
+                }
+            }
+        }
+
+        System.out.println("Modified files: " + nameStatusList.size() + "\n");
+
+        DiffOutput diffOutput = new DiffOutput(parentCommitHash, currentCommitHash, changedFiles);
+
+        // Write output file with results of git diff
+        String diffOutputFileName = diffOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
+                (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
+        String diffOutputPath = Paths.get(outputPath, diffOutputFileName).toString();
+
+        jsonHandler.saveToJSON(diffOutput, diffOutputPath);
+
+    }
+
+
+    private void printOutDiffMap(List<String> mapFileLines) {
+
+        // Calculate number of characters to use in formatting of line number based on number of lines in file
+        // i.e. number of characters = 1 + digits in number of lines
+        int digitsNo = Math.max(4, 1 + Integer.toString(mapFileLines.size()).length());
+        String format = "%-" + digitsNo + "d";
+
+        String paddingSpaces = String.join("", Collections.nCopies(digitsNo - 3, " "));
+
+        System.out.println("Mapping of line changes:");
+        System.out.println("OLD" + paddingSpaces + ": NEW" + paddingSpaces + ":");
+
+//        int lineNo = 0;
+
+        for (String mapLine : mapFileLines) {
+
+            int oldLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
+            String oldLineIndicator = oldLineNo == 0 ? "N/E" + paddingSpaces : String.format(format, oldLineNo);
+
+            mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
+
+            int newLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
+            String newLineIndicator = newLineNo == 0 ? "DEL" + paddingSpaces : String.format(format, newLineNo);
+
+            mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
+
+            mapLine = oldLineIndicator + ": " + newLineIndicator + ": " + mapLine;
+
+            // add line colour, i.e. green if added line, red if deleted line
+            if (oldLineNo == 0) {
+                mapLine = ANSI_GREEN + mapLine + ANSI_RESET;
+            } else if (newLineNo == 0) {
+                mapLine = ANSI_RED + mapLine + ANSI_RESET;
+            }
+
+            // TODO Decide whether to include map output line numbers
+//            String mapLineIndicator = String.format(format, ++lineNo);
+//            mapLine = mapLineIndicator + ": " + mapLine;
+
+            System.out.println(mapLine);
+        }
+
+        System.out.println();
+
+    }
+
 
     private File createTempPom(String repoPath, String pomFile) throws Exception {
 
@@ -646,7 +698,7 @@ class MainWorker implements Worker {
 
         try {
             // create all output folders and sub-folders if they don't already exist
-            Files.createDirectories(outputPath);
+            this.outputPath = Files.createDirectories(outputPath).toString();
         } catch (FileAlreadyExistsException e) {
             e.printStackTrace();
 
@@ -659,21 +711,22 @@ class MainWorker implements Worker {
             return 1;
         }
 
-        outputPath = Paths.get(outputPath.toString(), startTime);
+        if (createTimestampFolder) {
+            outputPath = Paths.get(outputPath.toString(), startTime);
 
-        try {
-            // create sub-folder for current run -> current date & time
-            this.outputPath = Files.createDirectory(outputPath).toString();
-        } catch (FileAlreadyExistsException e) {
-            e.printStackTrace();
+            try {
+                this.outputPath = Files.createDirectory(outputPath).toString();
+            } catch (FileAlreadyExistsException e) {
+                e.printStackTrace();
 
-            // file exists
-            return 98;
-        } catch (IOException e) {
-            e.printStackTrace();
+                // file exists
+                return 98;
+            } catch (IOException e) {
+                e.printStackTrace();
 
-            // some other IO Exception has occurred
-            return 1;
+                // some other IO Exception has occurred
+                return 1;
+            }
         }
 
         return 0;
@@ -767,7 +820,7 @@ class MainWorker implements Worker {
     }
 
 
-    private void rollBack(String commit) {
+    private void rollBackTo(String commit) {
 
         String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
 
@@ -780,26 +833,6 @@ class MainWorker implements Worker {
 
 //        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
 //        System.out.println(String.join("\n", commandExecutor.getStandardError()));
-    }
-
-
-    private String getCommitHash(String commit) {
-
-        if (commit.length() == 0) return "no hash : staged changes not committed";
-
-        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
-
-        String command = gitRevParseCommand.replace(gitOptionsPlaceholder, gitOptions);
-        command = command.replace("<revParseOptions>", "");
-        command = command + commit;
-
-        //commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println(String.join("\n", commandExecutor.getStandardError());
-
-        return String.join("", commandExecutor.getStandardOutput());
     }
 
 
@@ -819,28 +852,105 @@ class MainWorker implements Worker {
     }
 
 
+    private String parseCommit(String commit) {
+
+        if (commit.equals("") || commit.equals("HEAD") || commit.equals(originalGitBranch))
+            return getCommitHash(commit);
+
+        if (commit.startsWith("HEAD") || commit.startsWith(originalGitBranch)) {
+
+            String tail = commit.substring(4);
+
+            if (tail.equals("~")) return getCommitHash(commit);
+
+            if (!tail.startsWith("~")) {
+
+                System.out.println("The revision you specified is invalid.");
+                System.out.println("Tip: enter the revision in form <refname>~<n>");
+                App.systemExit(99);
+
+            } else {
+
+                String generationString = commit.substring(1);
+                int generation = 0;
+
+                try {
+
+                    generation = Integer.valueOf(generationString);
+
+                    if (generation < 0) throw new NumberFormatException();
+
+                } catch (NumberFormatException e) {
+                    System.out.println("The generation you specified is invalid: " + generationString);
+                    System.out.println("Tip: the generation should be a positive integer");
+                    App.systemExit(99);
+                }
+
+                if (generation > (commitsList.size() - 1)) {
+                    System.out.println("The generation you specified exceeds the history of the branch.");
+                    System.out.println("Tip: this branch has " + (commitsList.size() - 1) + " past commits");
+                    App.systemExit(99);
+                }
+            }
+
+            return getCommitHash(commit);
+        }
+
+        if (commit.length() == 7 && shortRevExists(commit)) return getCommitHash(commit);
+
+        if (commit.length() == 40 && commitsList.contains(commit)) return commit;
+
+        return null;
+    }
+
+
+    private boolean shortRevExists(String shortRev) {
+        for (String commit : commitsList)
+            if (commit.startsWith(shortRev)) return true;
+        return false;
+    }
+
+
+    private String getCommitHash(String commit) {
+
+        if (commit.length() == 0) return "";
+
+        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
+
+        String command = gitRevParseCommand.replace(gitOptionsPlaceholder, gitOptions);
+        command = command.replace("<revParseOptions>", "");
+        command = command + commit;
+
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
+
+//        System.out.println(String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println(String.join("\n", commandExecutor.getStandardError());
+
+        return String.join("", commandExecutor.getStandardOutput());
+    }
+
+
     private List<String> gitDiffNameStatus() {
 
         String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(projectPath);
         String diffOptions = diffOptionNameStatus + diffOptionFindCopiesHarder;
         String gitOldFile = "", gitNewFile = "";
 
-        String command = buildGitDiffCommand(gitOptions, diffOptions, oldCommit, gitOldFile, newCommit, gitNewFile);
+        String command = buildGitDiffCommand(
+                gitOptions,
+                diffOptions,
+                parentCommitHash,
+                gitOldFile,
+                currentCommitHash,
+                gitNewFile
+        );
 
 //        commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
-        String commandStandardOutput = String.join("\n", commandExecutor.getStandardOutput());
-//        String commandStandardError = String.join("\n", commandExecutor.getStandardError());
-
-        if (commandStandardOutput.length() == 0) {
-            System.out.println("PitStat: No difference between " + oldCommit + " and " +
-                    (newCommit.equals("") ? "staged changes (maybe forgot to stage changes?)" : newCommit));
-            System.exit(0);
-        }
-
-//        System.out.println("Standard output:\n" + commandStandardOutput);
-//        System.out.println("Standard error:\n" + commandStandardError);
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
         return commandExecutor.getStandardOutput();
     }
@@ -852,7 +962,7 @@ class MainWorker implements Worker {
         String gitOldFile = " -- " + wrapInvCommas(changedFile);
         String gitNewFile = " -- " + wrapInvCommas(newFile);
 
-        String command = buildGitDiffCommand(gitOptions, diffOptions, oldCommit, gitOldFile, newCommit, gitNewFile);
+        String command = buildGitDiffCommand(gitOptions, diffOptions, parentCommitHash, gitOldFile, currentCommitHash, gitNewFile);
 
         //commandExecutor.execute(command, true);
         commandExecutor.execute(command);
