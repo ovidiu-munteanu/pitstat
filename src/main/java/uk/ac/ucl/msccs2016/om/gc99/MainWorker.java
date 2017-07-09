@@ -174,7 +174,7 @@ class MainWorker implements Worker {
         int currentRollback = 0;
 
         do {
-            System.out.println("Rollback: " + currentRollback++);
+            System.out.println("\nRollback: " + currentRollback++);
 
             System.out.println("Current commit hash: " +
                     (currentCommitHash.length() > 0 ? currentCommitHash : "currently at staged changes (not committed) -> no hash"));
@@ -217,25 +217,12 @@ class MainWorker implements Worker {
 
         if (maxMutationsNo == -1) App.systemExit(99);
 
-        int digitsNo = Math.max(3, 2 + Integer.toString(maxMutationsNo).length());
-        String format = "%-" + digitsNo + "d";
 
-        StringBuilder stringBuilder = new StringBuilder();
-        String formattedNumber;
+        String formattedPitMatrixOutput = formatPitMatrixOutput(pitMatrix, maxMutationsNo);
 
 
-        System.out.println("Pit analysis matrix:");
+        System.out.println(formattedPitMatrixOutput);
 
-        for (int i = 0; i < pitMatrixSize; i++) {
-            for (int j = 0; j < pitMatrixSize; j++) {
-                formattedNumber = String.format(format, pitMatrix[i][j]);
-                stringBuilder.append(formattedNumber);
-                System.out.print(formattedNumber);
-
-            }
-            stringBuilder.append("\n");
-            System.out.println("\n");
-        }
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
@@ -245,11 +232,95 @@ class MainWorker implements Worker {
         Path diffOutputPath = Paths.get(outputPath, matrixOutputFileName);
 
         try {
-            Files.write(diffOutputPath, stringBuilder.toString().getBytes());
+            Files.write(diffOutputPath, formattedPitMatrixOutput.getBytes());
         } catch (IOException e) {
             System.err.println("runPitMatrixAnalysis(): can't write matrix file for some reason");
             e.printStackTrace();
         }
+    }
+
+    private String formatPitMatrixOutput(int[][] pitMatrix, int maxValue) {
+
+        int paddingSpacesNo;
+
+        int digitsNo = Math.max(3, 2 + Integer.toString(maxValue).length());
+        String format = "%-" + digitsNo + "d";
+
+        StringBuilder stringBuilder = new StringBuilder();
+
+// Append description of contents
+        stringBuilder.append("Pit mutations statistics matrix:\n");
+        stringBuilder.append("New commit: " + childCommitHash + "\n");
+        stringBuilder.append("Old commit: " + currentCommitHash + "\n");
+        stringBuilder.append("\n");
+
+
+// Assemble first headings row
+        stringBuilder.append(paddingSpaces(12));
+
+        stringBuilder.append(colHeading0[0]);
+
+        // number of spaces between "New commit" and "Old commit" headings on the first headings row
+        paddingSpacesNo = digitsNo * 8 - colHeading0[0].length() + 3;
+        stringBuilder.append(paddingSpaces(paddingSpacesNo));
+
+        stringBuilder.append(colHeading0[1]);
+
+        stringBuilder.append("\n");
+
+
+// Assemble second headings row
+        stringBuilder.append(paddingSpaces(12));
+
+        for (int i = 0; i < totalRowCol; i++) {
+            paddingSpacesNo = digitsNo - 3;   // colHeading1[i].length();
+            stringBuilder.append(colHeading1[i]);
+            stringBuilder.append(paddingSpaces(paddingSpacesNo));
+        }
+
+        stringBuilder.append(paddingSpaces(3));
+        stringBuilder.append(colHeading1[totalRowCol]);
+
+        stringBuilder.append("\n");
+
+// Add matrix rows to output
+
+        for (int i = 0; i < pitMatrixSize; i++) {
+
+            if (i == totalRowCol) stringBuilder.append("\n");
+
+            stringBuilder.append(rowHeadings[i]);
+
+            for (int j = 0; j < totalRowCol; j++)
+                if (i == 0 & j == 0) {
+                    paddingSpacesNo = digitsNo - 1;
+                    stringBuilder.append("-");
+                    stringBuilder.append(paddingSpaces(paddingSpacesNo));
+                } else {
+                    stringBuilder.append(String.format(format, pitMatrix[i][j]));
+                }
+
+            stringBuilder.append(paddingSpaces(3));
+
+
+            if (i != totalRowCol)
+                stringBuilder.append(String.format(format, pitMatrix[i][totalRowCol]));
+
+
+            stringBuilder.append("\n");
+
+        }
+
+// Add final output row
+        stringBuilder.append(rowHeadings[pitMatrixSize]);
+        stringBuilder.append("\n");
+
+        return stringBuilder.toString();
+    }
+
+
+    private String paddingSpaces(int n) {
+        return String.join("", Collections.nCopies(n, " "));
     }
 
 
@@ -419,7 +490,8 @@ class MainWorker implements Worker {
         // git diff name-status between previous and current commit
         List<String> nameStatusList = gitDiffNameStatus();
 
-        changedFiles = null;
+        int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
+        changedFiles = new HashMap<>(hashMapCapacity);
 
         if (nameStatusList.size() == 0) {
 
@@ -428,8 +500,8 @@ class MainWorker implements Worker {
 
         } else {
 
-            int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
-            changedFiles = new HashMap<>(hashMapCapacity);
+//            int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
+//            changedFiles = new HashMap<>(hashMapCapacity);
 
             for (String nameStatusLine : nameStatusList) {
 
@@ -717,7 +789,7 @@ class MainWorker implements Worker {
             }
         }
 
-        System.out.println("\n");
+        System.out.println();
 
         // Path latestPitReportPath = getLatestPitReportPath(pitReportsPath, pitReportsPathRelative);
         String pitMutationsReport = Paths.get(projectPath, pitReportsPath, pitMutationsFile).toString();

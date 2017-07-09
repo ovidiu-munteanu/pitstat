@@ -82,4 +82,18 @@ interface Worker {
             totalRowCol = 8,
             pitMatrixSize = 9;
 
+    String[] colHeading0 = {"New commit", "Old commit"};
+    String[] colHeading1 = {"N/E", "KLD", "SVD", "N/C", "N/V", "T/O", "M/E", "R/E", "Totals"};
+    String[] rowHeadings = {
+            "Old    N/E  ",
+            "commit KLD  ",
+            "       SVD  ",
+            "       N/C  ",
+            "       N/V  ",
+            "       T/O  ",
+            "       M/E  ",
+            "       R/E  ",
+            "New Totals  ",
+            "commit"};
+
 }
