@@ -32,11 +32,14 @@ interface Worker {
 
     String typeDiffOutput = "dif";
     String typePitOutput = "pit";
-    String typeMatrixOutput = "mtx";
+    String typeMatrixHumanOutput = "mxH";
+    String typeMatrixMachineOutput = "mxM";
+
 
     String diffOutputBaseFileName = typeDiffOutput + "-<date-hash>.json";
     String pitOutputBaseFileName = typePitOutput + "-<date-hash>.json";
-    String matrixOutputBaseFileName = typeMatrixOutput + "-<date-hash>.txt";
+    String matrixHumanOutputBaseFileName = typeMatrixHumanOutput + "-<date-hash>.txt";
+    String matrixMachineOutputBaseFileName = typeMatrixMachineOutput + "-<date-hash>.txt";
 
 
     String mvnGoalTest = " test ";
@@ -93,7 +96,7 @@ interface Worker {
             "       T/O  ",
             "       M/E  ",
             "       R/E  ",
-            "New Totals  ",
-            "commit"};
+          "\nNew commit\n" +
+            "    Totals  "};
 
 }

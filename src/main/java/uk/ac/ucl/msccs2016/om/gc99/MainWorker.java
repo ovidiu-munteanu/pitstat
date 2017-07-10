@@ -209,281 +209,6 @@ class MainWorker implements Worker {
     }
 
 
-    private void runPitMatrixAnalysis() {
-
-        int[][] pitMatrix = new int[pitMatrixSize][pitMatrixSize];
-
-        int maxMutationsNo = buildPitMatrix(childCommitHash, currentCommitHash, pitMatrix);
-
-        if (maxMutationsNo == -1) App.systemExit(99);
-
-
-        String formattedPitMatrixOutput = formatPitMatrixOutput(pitMatrix, maxMutationsNo);
-
-
-        System.out.println(formattedPitMatrixOutput);
-
-
-        outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-
-        // Write output file with results of matrix analysis
-        String matrixOutputFileName = matrixOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
-                (childCommitHash.equals("") ? "staged-changes-no-hash" : childCommitHash));
-        Path diffOutputPath = Paths.get(outputPath, matrixOutputFileName);
-
-        try {
-            Files.write(diffOutputPath, formattedPitMatrixOutput.getBytes());
-        } catch (IOException e) {
-            System.err.println("runPitMatrixAnalysis(): can't write matrix file for some reason");
-            e.printStackTrace();
-        }
-    }
-
-    private String formatPitMatrixOutput(int[][] pitMatrix, int maxValue) {
-
-        int paddingSpacesNo;
-
-        int digitsNo = Math.max(3, 2 + Integer.toString(maxValue).length());
-        String format = "%-" + digitsNo + "d";
-
-        StringBuilder stringBuilder = new StringBuilder();
-
-// Append description of contents
-        stringBuilder.append("Pit mutations statistics matrix:\n");
-        stringBuilder.append("New commit: " + childCommitHash + "\n");
-        stringBuilder.append("Old commit: " + currentCommitHash + "\n");
-        stringBuilder.append("\n");
-
-
-// Assemble first headings row
-        stringBuilder.append(paddingSpaces(12));
-
-        stringBuilder.append(colHeading0[0]);
-
-        // number of spaces between "New commit" and "Old commit" headings on the first headings row
-        paddingSpacesNo = digitsNo * 8 - colHeading0[0].length() + 3;
-        stringBuilder.append(paddingSpaces(paddingSpacesNo));
-
-        stringBuilder.append(colHeading0[1]);
-
-        stringBuilder.append("\n");
-
-
-// Assemble second headings row
-        stringBuilder.append(paddingSpaces(12));
-
-        for (int i = 0; i < totalRowCol; i++) {
-            paddingSpacesNo = digitsNo - 3;   // colHeading1[i].length();
-            stringBuilder.append(colHeading1[i]);
-            stringBuilder.append(paddingSpaces(paddingSpacesNo));
-        }
-
-        stringBuilder.append(paddingSpaces(3));
-        stringBuilder.append(colHeading1[totalRowCol]);
-
-        stringBuilder.append("\n");
-
-// Add matrix rows to output
-
-        for (int i = 0; i < pitMatrixSize; i++) {
-
-            if (i == totalRowCol) stringBuilder.append("\n");
-
-            stringBuilder.append(rowHeadings[i]);
-
-            for (int j = 0; j < totalRowCol; j++)
-                if (i == 0 & j == 0) {
-                    paddingSpacesNo = digitsNo - 1;
-                    stringBuilder.append("-");
-                    stringBuilder.append(paddingSpaces(paddingSpacesNo));
-                } else {
-                    stringBuilder.append(String.format(format, pitMatrix[i][j]));
-                }
-
-            stringBuilder.append(paddingSpaces(3));
-
-
-            if (i != totalRowCol)
-                stringBuilder.append(String.format(format, pitMatrix[i][totalRowCol]));
-
-
-            stringBuilder.append("\n");
-
-        }
-
-// Add final output row
-        stringBuilder.append(rowHeadings[pitMatrixSize]);
-        stringBuilder.append("\n");
-
-        return stringBuilder.toString();
-    }
-
-
-    private String paddingSpaces(int n) {
-        return String.join("", Collections.nCopies(n, " "));
-    }
-
-
-    private int buildPitMatrix(String newCommit, String oldCommit, int[][] pitMatrix) {
-
-        PitOutput newCommitPitOutput = loadPitOutput(newCommit);
-        PitOutput oldCommitPitOutput = loadPitOutput(oldCommit);
-
-        if (newCommitPitOutput == null || oldCommitPitOutput == null) return -1;
-
-        countMutations(newCommitPitOutput, true, oldCommitPitOutput, pitMatrix);
-        countMutations(oldCommitPitOutput, false, newCommitPitOutput, pitMatrix);
-
-        int maxValue = 0;
-
-        for (int i = 0; i < totalRowCol; i++)
-            for (int j = 0; j < totalRowCol; j++) {
-                pitMatrix[i][totalRowCol] += pitMatrix[i][j];
-                pitMatrix[totalRowCol][i] += pitMatrix[j][i];
-            }
-
-
-        for (int i = 0; i < pitMatrixSize; i++) {
-            if (maxValue < pitMatrix[totalRowCol][i]) maxValue = pitMatrix[totalRowCol][i];
-            if (maxValue < pitMatrix[i][totalRowCol]) maxValue = pitMatrix[i][totalRowCol];
-        }
-
-        return maxValue;
-    }
-
-
-    private void countMutations(PitOutput newCommitPitOutput, boolean isNewCommit,
-                                PitOutput oldCommitPitOutput, int[][] pitMatrix) {
-
-        String newFileName, newClassName, newMethodName;
-        MutatedFile newMutatedFile, oldMutatedFile;
-        MutatedFile.MutatedClass newMutatedClass, oldMutatedClass;
-        MutatedFile.MutatedMethod newMutatedMethod, oldMutatedMethod;
-
-        for (Map.Entry<String, MutatedFile> newMutatedFileEntry : newCommitPitOutput.mutatedFiles.entrySet()) {
-
-            newFileName = newMutatedFileEntry.getKey();
-            newMutatedFile = newMutatedFileEntry.getValue();
-
-            oldMutatedFile = oldCommitPitOutput.mutatedFiles.get(newFileName);
-
-            for (Map.Entry<String, MutatedFile.MutatedClass> newMutatedClassEntry : newMutatedFile.mutatedClasses.entrySet()) {
-
-                newClassName = newMutatedClassEntry.getKey();
-                newMutatedClass = newMutatedClassEntry.getValue();
-
-                oldMutatedClass = oldMutatedFile == null ? null : oldMutatedFile.mutatedClasses.get(newClassName);
-
-                for (Map.Entry<String, MutatedFile.MutatedMethod> newMutatedMethodEntry : newMutatedClass.mutatedMethods.entrySet()) {
-
-                    newMethodName = newMutatedMethodEntry.getKey();
-                    newMutatedMethod = newMutatedMethodEntry.getValue();
-
-                    oldMutatedMethod = oldMutatedClass == null ? null : oldMutatedClass.mutatedMethods.get(newMethodName);
-
-                    for (MutatedFile.Mutation newMutation : newMutatedMethod.mutations) {
-
-                        int matrixRow = nonExistentRowCol;
-
-                        if (oldMutatedFile != null && oldMutatedClass != null && oldMutatedMethod != null) {
-
-                            Iterator<MutatedFile.Mutation> oldMutationsIterator = oldMutatedMethod.mutations.listIterator();
-
-                            while (oldMutationsIterator.hasNext()) {
-                                MutatedFile.Mutation oldMutation = oldMutationsIterator.next();
-                                if (oldMutation.equals(newMutation)) {
-                                    matrixRow = getMatrixRowCol(oldMutation.status);
-
-                                    if (isNewCommit) oldMutationsIterator.remove();
-
-                                    break;
-                                }
-                            }
-                        }
-
-                        int matrixCol = getMatrixRowCol(newMutation.status);
-
-                        if (isNewCommit)
-                            pitMatrix[matrixRow][matrixCol]++;
-                        else
-                            pitMatrix[matrixCol][matrixRow]++;
-
-                    }
-                    if (isNewCommit && oldMutatedMethod != null && oldMutatedMethod.mutations.size() == 0)
-                        oldMutatedClass.mutatedMethods.remove(newMethodName);
-                }
-                if (isNewCommit && oldMutatedClass != null && oldMutatedClass.mutatedMethods.size() == 0)
-                    oldMutatedFile.mutatedClasses.remove(newClassName);
-            }
-            if (isNewCommit && oldMutatedFile != null && oldMutatedFile.mutatedClasses.size() == 0)
-                oldCommitPitOutput.mutatedFiles.remove(newFileName);
-        }
-    }
-
-
-    private int getMatrixRowCol(String status) {
-        switch (status) {
-            case "KILLED":
-                return killedRowCol;
-            case "SURVIVED":
-                return survivedRowCol;
-            case "NO_COVERAGE":
-                return noCoverageRowCol;
-            case "NON_VIABLE":
-                return nonViableRowCol;
-            case "TIMED_OUT":
-                return timedOutRowCol;
-            case "MEMORY_ERROR":
-                return memoryErrorRowCol;
-            case "RUN_ERROR":
-                return runErrorRowCol;
-        }
-        return -1;
-    }
-
-
-    private PitOutput loadPitOutput(String commit) {
-        String pitOutputFileName = getOutputFileName(commit, typePitOutput, outputPath);
-
-        PitOutput loadPitOutput;
-
-        try {
-            loadPitOutput = jsonHandler.loadPitFromJSON(pitOutputFileName);
-        } catch (Exception e) {
-            System.err.println("The pit output file for commit " + commit + " could not be loaded.");
-            return null;
-        }
-
-        return loadPitOutput;
-    }
-
-
-    private String getOutputFileName(String commit, String type, String directory) {
-        List<String> fileList = filesInDirectory(directory);
-
-        if (fileList == null) return null;
-
-        for (String qualifiedName : fileList) {
-            String fileName = Paths.get(qualifiedName).getFileName().toString();
-            if (fileName.startsWith(type) && fileName.contains(commit)) return qualifiedName;
-        }
-
-        return null;
-    }
-
-    private List<String> filesInDirectory(String directory) {
-        List<String> filesInDirectory = new ArrayList<>();
-        try {
-            Files.list(Paths.get(directory))
-                    .filter(Files::isRegularFile)
-                    .forEach(file -> filesInDirectory.add(file.toString()));
-        } catch (IOException e) {
-            return null;
-        }
-        return filesInDirectory;
-    }
-
-
     @SuppressWarnings("unchecked")
     private void runGitDiff() throws Exception {
 
@@ -730,7 +455,7 @@ class MainWorker implements Worker {
         int digitsNo = Math.max(4, 1 + Integer.toString(mapFileLines.size()).length());
         String format = "%-" + digitsNo + "d";
 
-        String paddingSpaces = String.join("", Collections.nCopies(digitsNo - 3, " "));
+        String paddingSpaces = this.paddingSpaces(digitsNo - 3);
 
         System.out.println("Mapping of line changes:");
         System.out.println("OLD" + paddingSpaces + ": NEW" + paddingSpaces + ":");
@@ -919,6 +644,323 @@ class MainWorker implements Worker {
     }
 
 
+    private void runPitMatrixAnalysis() throws Exception{
+
+        int[][] pitMatrix = new int[pitMatrixSize][pitMatrixSize];
+
+        int maxMutationsNo = buildPitMatrix(childCommitHash, currentCommitHash, pitMatrix);
+
+        if (maxMutationsNo == -1) App.systemExit(99);
+
+
+        String formattedPitMatrixOutput = formatPitMatrixOutput(pitMatrix, maxMutationsNo);
+
+
+        System.out.println(formattedPitMatrixOutput);
+
+
+        outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+
+        // Write human readable output file with results of matrix analysis
+        String matrixHumanOutputFileName = matrixHumanOutputBaseFileName.replace("<date-hash>",
+                outputTime + "-" + (childCommitHash.equals("") ? "staged-changes-no-hash" : childCommitHash));
+        Path matrixHumanOutputPath = Paths.get(outputPath, matrixHumanOutputFileName);
+
+        try {
+            Files.write(matrixHumanOutputPath, formattedPitMatrixOutput.getBytes());
+        } catch (IOException e) {
+            System.err.println("runPitMatrixAnalysis(): can't write matrix file for some reason");
+            e.printStackTrace();
+        }
+
+
+        MatrixOutput matrixOutput = new MatrixOutput(childCommitHash, currentCommitHash, pitMatrix);
+
+        // Write machine readable output file with results of matrix analysis
+        String matrixMachineOutputFileName = matrixMachineOutputBaseFileName.replace("<date-hash>",
+                outputTime + "-" + (childCommitHash.equals("") ? "staged-changes-no-hash" : childCommitHash));
+        String matrixMachineOutputPath = Paths.get(outputPath, matrixMachineOutputFileName).toString();
+
+        jsonHandler.saveMatrixToJSON(matrixOutput, matrixMachineOutputPath);
+
+    }
+
+
+    private int buildPitMatrix(String newCommit, String oldCommit, int[][] pitMatrix) {
+
+        PitOutput newCommitPitOutput = loadPitOutput(newCommit);
+        PitOutput oldCommitPitOutput = loadPitOutput(oldCommit);
+
+        if (newCommitPitOutput == null || oldCommitPitOutput == null) return -1;
+
+        DiffOutput diffOutput = loadDiffOutput(newCommit);
+
+        countMutations(newCommitPitOutput, true, oldCommitPitOutput, pitMatrix, diffOutput);
+        countMutations(oldCommitPitOutput, false, newCommitPitOutput, pitMatrix, diffOutput);
+
+        int maxValue = 0;
+
+        for (int i = 0; i < totalRowCol; i++)
+            for (int j = 0; j < totalRowCol; j++) {
+                pitMatrix[i][totalRowCol] += pitMatrix[i][j];
+                pitMatrix[totalRowCol][i] += pitMatrix[j][i];
+            }
+
+
+        for (int i = 0; i < pitMatrixSize; i++) {
+            if (maxValue < pitMatrix[totalRowCol][i]) maxValue = pitMatrix[totalRowCol][i];
+            if (maxValue < pitMatrix[i][totalRowCol]) maxValue = pitMatrix[i][totalRowCol];
+        }
+
+        return maxValue;
+    }
+
+
+    private void countMutations(PitOutput newCommitPitOutput, boolean isNewCommit,
+                                PitOutput oldCommitPitOutput, int[][] pitMatrix, DiffOutput diffOutput) {
+
+        String newFileName, newClassName, newMethodName, oldFileName, oldClassName, oldMethodName;
+        MutatedFile newMutatedFile, oldMutatedFile;
+        MutatedFile.MutatedClass newMutatedClass, oldMutatedClass;
+        MutatedFile.MutatedMethod newMutatedMethod, oldMutatedMethod;
+
+        boolean renamedFile;
+
+        for (Map.Entry<String, MutatedFile> newMutatedFileEntry : newCommitPitOutput.mutatedFiles.entrySet()) {
+
+            newFileName = newMutatedFileEntry.getKey();
+            newMutatedFile = newMutatedFileEntry.getValue();
+
+            if (isNewCommit && diffOutput.changedFiles.containsKey(newFileName) &&
+                    diffOutput.changedFiles.get(newFileName).changeType.equals("R")) {
+                oldFileName = diffOutput.changedFiles.get(newFileName).oldFileName;
+                renamedFile = true;
+            } else {
+                oldFileName = newFileName;
+                renamedFile = false;
+            }
+
+            oldMutatedFile = oldCommitPitOutput.mutatedFiles.get(oldFileName);
+
+            for (Map.Entry<String, MutatedFile.MutatedClass> newMutatedClassEntry : newMutatedFile.mutatedClasses.entrySet()) {
+
+                newClassName = newMutatedClassEntry.getKey();
+                newMutatedClass = newMutatedClassEntry.getValue();
+
+                if (oldMutatedFile != null) {
+                    oldClassName = renamedFile ? newClassName.replace(extractNameOnly(newFileName), extractNameOnly(oldFileName)) : newClassName;
+                    oldMutatedClass = oldMutatedFile.mutatedClasses.get(oldClassName);
+                } else {
+                    oldClassName = null;
+                    oldMutatedClass = null;
+                }
+
+                for (Map.Entry<String, MutatedFile.MutatedMethod> newMutatedMethodEntry : newMutatedClass.mutatedMethods.entrySet()) {
+
+                    newMethodName = newMutatedMethodEntry.getKey();
+                    newMutatedMethod = newMutatedMethodEntry.getValue();
+
+                    if (oldMutatedClass != null) {
+                        oldMethodName = renamedFile ? newMethodName.replace(extractNameOnly(newFileName), extractNameOnly(oldFileName)) : newMethodName;
+                        oldMutatedMethod = oldMutatedClass.mutatedMethods.get(oldMethodName);
+                    } else {
+                        oldMethodName = null;
+                        oldMutatedMethod = null;
+                    }
+
+                    for (MutatedFile.Mutation newMutation : newMutatedMethod.mutations) {
+
+                        int matrixRow = nonExistentRowCol;
+
+                        if (oldMutatedFile != null && oldMutatedClass != null && oldMutatedMethod != null) {
+
+                            Iterator<MutatedFile.Mutation> oldMutationsIterator = oldMutatedMethod.mutations.listIterator();
+
+                            while (oldMutationsIterator.hasNext()) {
+                                MutatedFile.Mutation oldMutation = oldMutationsIterator.next();
+                                if (oldMutation.equals(newMutation)) {
+                                    matrixRow = getMatrixRowCol(oldMutation.status);
+
+                                    if (isNewCommit) oldMutationsIterator.remove();
+
+                                    break;
+                                }
+                            }
+                        }
+
+                        int matrixCol = getMatrixRowCol(newMutation.status);
+
+                        if (isNewCommit)
+                            pitMatrix[matrixRow][matrixCol]++;
+                        else
+                            pitMatrix[matrixCol][matrixRow]++;
+
+                    }
+                    if (isNewCommit && oldMutatedMethod != null && oldMutatedMethod.mutations.size() == 0)
+                        oldMutatedClass.mutatedMethods.remove(oldMethodName);
+                }
+                if (isNewCommit && oldMutatedClass != null && oldMutatedClass.mutatedMethods.size() == 0)
+                    oldMutatedFile.mutatedClasses.remove(oldClassName);
+            }
+            if (isNewCommit && oldMutatedFile != null && oldMutatedFile.mutatedClasses.size() == 0)
+                oldCommitPitOutput.mutatedFiles.remove(oldFileName);
+        }
+    }
+
+
+    private String extractNameOnly(String qualifiedFileName) {
+        return qualifiedFileName.substring(qualifiedFileName.lastIndexOf("/") + 1, qualifiedFileName.lastIndexOf("."));
+    }
+
+
+    private String formatPitMatrixOutput(int[][] pitMatrix, int maxValue) {
+
+        int paddingSpacesNo;
+
+        int digitsNo = Math.max(3, 2 + Integer.toString(maxValue).length());
+        String format = "%-" + digitsNo + "d";
+
+        StringBuilder stringBuilder = new StringBuilder();
+
+// Append description of contents
+        stringBuilder.append("Pit mutations statistics matrix:\n");
+        stringBuilder.append("New commit: " + childCommitHash + "\n");
+        stringBuilder.append("Old commit: " + currentCommitHash + "\n");
+        stringBuilder.append("\n");
+
+
+// Assemble first headings row
+        stringBuilder.append(paddingSpaces(12));
+
+        stringBuilder.append(colHeading0[0]);
+
+        // number of spaces between "New commit" and "Old commit" headings on the first headings row
+        paddingSpacesNo = digitsNo * 8 - colHeading0[0].length() + 3;
+        stringBuilder.append(paddingSpaces(paddingSpacesNo));
+
+        stringBuilder.append(colHeading0[1]);
+
+        stringBuilder.append("\n");
+
+
+// Assemble second headings row
+        stringBuilder.append(paddingSpaces(12));
+
+        for (int i = 0; i < totalRowCol; i++) {
+            paddingSpacesNo = digitsNo - 3;   // colHeading1[i].length();
+            stringBuilder.append(colHeading1[i]);
+            stringBuilder.append(paddingSpaces(paddingSpacesNo));
+        }
+
+        stringBuilder.append(paddingSpaces(3));
+        stringBuilder.append(colHeading1[totalRowCol]);
+
+        stringBuilder.append("\n");
+
+// Add matrix rows to output
+
+        for (int i = 0; i < pitMatrixSize; i++) {
+
+            stringBuilder.append(rowHeadings[i]);
+
+            for (int j = 0; j < totalRowCol; j++)
+                if (i == 0 & j == 0) {
+                    paddingSpacesNo = digitsNo - 1;
+                    stringBuilder.append("-");
+                    stringBuilder.append(paddingSpaces(paddingSpacesNo));
+                } else {
+                    stringBuilder.append(String.format(format, pitMatrix[i][j]));
+                }
+
+            stringBuilder.append(paddingSpaces(3));
+
+
+            if (i != totalRowCol)
+                stringBuilder.append(String.format(format, pitMatrix[i][totalRowCol]));
+
+
+            stringBuilder.append("\n");
+
+        }
+
+        return stringBuilder.toString();
+    }
+
+
+    private int getMatrixRowCol(String status) {
+        switch (status) {
+            case "KILLED":
+                return killedRowCol;
+            case "SURVIVED":
+                return survivedRowCol;
+            case "NO_COVERAGE":
+                return noCoverageRowCol;
+            case "NON_VIABLE":
+                return nonViableRowCol;
+            case "TIMED_OUT":
+                return timedOutRowCol;
+            case "MEMORY_ERROR":
+                return memoryErrorRowCol;
+            case "RUN_ERROR":
+                return runErrorRowCol;
+        }
+        return -1;
+    }
+
+
+    private DiffOutput loadDiffOutput(String commitHash) {
+        return (DiffOutput) loadOutput(commitHash, typeDiffOutput);
+    }
+
+
+    private PitOutput loadPitOutput(String commitHash) {
+        return (PitOutput) loadOutput(commitHash, typePitOutput);
+    }
+
+
+    private Object loadOutput(String commitHash, String outputType) {
+        String outputFileName = getOutputFileName(commitHash, outputType, outputPath);
+        try {
+            switch (outputType) {
+                case typeDiffOutput:
+                    return jsonHandler.loadDifFromJSON(outputFileName);
+                case typePitOutput:
+                    return jsonHandler.loadPitFromJSON(outputFileName);
+            }
+        } catch (Exception e) {
+            System.err.println("The " + outputType + " output file for commit " + commitHash + " could not be loaded.");
+        }
+        return null;
+    }
+
+
+    private String getOutputFileName(String commit, String type, String directory) {
+        List<String> fileList = filesInDirectory(directory);
+
+        if (fileList == null) return null;
+
+        for (String qualifiedName : fileList) {
+            String fileName = Paths.get(qualifiedName).getFileName().toString();
+            if (fileName.startsWith(type) && fileName.contains(commit)) return qualifiedName;
+        }
+
+        return null;
+    }
+
+
+    private List<String> filesInDirectory(String directory) {
+        List<String> filesInDirectory = new ArrayList<>();
+        try {
+            Files.list(Paths.get(directory))
+                    .filter(Files::isRegularFile)
+                    .forEach(file -> filesInDirectory.add(file.toString()));
+        } catch (IOException e) {
+            return null;
+        }
+        return filesInDirectory;
+    }
+
+
     private File createTempPom(String repoPath, String pomFile) throws Exception {
 
         File repositoryPom = new File(Paths.get(repoPath, pomFile).toString());
@@ -1044,6 +1086,62 @@ class MainWorker implements Worker {
 //    }
 
 
+    private String parseCommit(String commit) {
+
+        if (commit.equals("") || commit.equals("HEAD") || commit.equals(originalGitBranch))
+            return getCommitHash(commit);
+
+        if (commit.startsWith("HEAD") || commit.startsWith(originalGitBranch)) {
+
+            String tail = commit.substring(4);
+
+            if (tail.equals("~")) return getCommitHash(commit);
+
+            if (!tail.startsWith("~")) {
+
+                System.out.println("The revision you specified is invalid.");
+                System.out.println("Tip: enter the revision in form <refname>~<n>");
+                App.systemExit(99);
+
+            } else {
+
+                String generationString = tail.substring(1);
+                int generation = 0;
+
+                try {
+                    generation = Integer.valueOf(generationString);
+                    if (generation < 0) throw new NumberFormatException();
+                } catch (NumberFormatException e) {
+                    System.out.println("The generation you specified is invalid: " + generationString);
+                    System.out.println("Tip: the generation should be a positive integer");
+                    App.systemExit(99);
+                }
+
+                if (generation > (commitsHashList.size() - 1)) {
+                    System.out.println("The generation you specified exceeds the history of the branch.");
+                    System.out.println("Tip: this branch has " + (commitsHashList.size() - 1) + " past commits");
+                    App.systemExit(99);
+                }
+            }
+
+            return getCommitHash(commit);
+        }
+
+        if (commit.length() == 7 && shortRevExists(commit)) return getCommitHash(commit);
+
+        if (commit.length() == 40 && commitsHashList.contains(commit)) return commit;
+
+        return null;
+    }
+
+
+    private boolean shortRevExists(String shortRev) {
+        for (String commit : commitsHashList)
+            if (commit.startsWith(shortRev)) return true;
+        return false;
+    }
+
+
     private String getGitBranch(String commit) {
 
         String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
@@ -1145,62 +1243,6 @@ class MainWorker implements Worker {
     }
 
 
-    private String parseCommit(String commit) {
-
-        if (commit.equals("") || commit.equals("HEAD") || commit.equals(originalGitBranch))
-            return getCommitHash(commit);
-
-        if (commit.startsWith("HEAD") || commit.startsWith(originalGitBranch)) {
-
-            String tail = commit.substring(4);
-
-            if (tail.equals("~")) return getCommitHash(commit);
-
-            if (!tail.startsWith("~")) {
-
-                System.out.println("The revision you specified is invalid.");
-                System.out.println("Tip: enter the revision in form <refname>~<n>");
-                App.systemExit(99);
-
-            } else {
-
-                String generationString = tail.substring(1);
-                int generation = 0;
-
-                try {
-                    generation = Integer.valueOf(generationString);
-                    if (generation < 0) throw new NumberFormatException();
-                } catch (NumberFormatException e) {
-                    System.out.println("The generation you specified is invalid: " + generationString);
-                    System.out.println("Tip: the generation should be a positive integer");
-                    App.systemExit(99);
-                }
-
-                if (generation > (commitsHashList.size() - 1)) {
-                    System.out.println("The generation you specified exceeds the history of the branch.");
-                    System.out.println("Tip: this branch has " + (commitsHashList.size() - 1) + " past commits");
-                    App.systemExit(99);
-                }
-            }
-
-            return getCommitHash(commit);
-        }
-
-        if (commit.length() == 7 && shortRevExists(commit)) return getCommitHash(commit);
-
-        if (commit.length() == 40 && commitsHashList.contains(commit)) return commit;
-
-        return null;
-    }
-
-
-    private boolean shortRevExists(String shortRev) {
-        for (String commit : commitsHashList)
-            if (commit.startsWith(shortRev)) return true;
-        return false;
-    }
-
-
     private String getCommitHash(String commit) {
 
         if (commit.length() == 0) return "";
@@ -1276,6 +1318,12 @@ class MainWorker implements Worker {
 
         return command;
     }
+
+
+    private String paddingSpaces(int n) {
+        return String.join("", Collections.nCopies(n, " "));
+    }
+
 
     private String wrapInvCommas(String s) {
         return "\"" + s + "\"";
