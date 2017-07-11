@@ -99,6 +99,7 @@ class MainWorker implements Worker {
         commandExecutor = new CommandExecutor();
 
         mavenInvoker = new DefaultInvoker();
+//        mavenInvoker.setMavenHome(new File(System.getenv("M2_HOME")));
 
         invocationRequest = new DefaultInvocationRequest();
         invocationRequest.setGoals(Arrays.asList(mvnGoalTest, mvnGoalPitest));
@@ -1253,11 +1254,11 @@ class MainWorker implements Worker {
         command = command.replace("<revParseOptions>", "");
         command = command + commit;
 
-//        commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
+        commandExecutor.execute(command, true);
+//        commandExecutor.execute(command);
 
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
+        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
         return commandExecutor.getStandardOutput().get(0);
     }
@@ -1326,7 +1327,9 @@ class MainWorker implements Worker {
 
 
     private String wrapInvCommas(String s) {
-        return "\"" + s + "\"";
+//        return "\"" + s + "\"";
+        return s;
+
     }
 
 }

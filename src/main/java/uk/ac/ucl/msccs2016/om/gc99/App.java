@@ -174,8 +174,8 @@ public class App {
 
         if (worker.validStartEndCommits()) worker.doWork();
 
-
-        if (shutdown) Runtime.getRuntime().exec(systemShutdownCommand(30));
+        // shutdown in 1 minute
+        if (shutdown) Runtime.getRuntime().exec(systemShutdownCommand(1));
         System.exit(0);
 
     }
@@ -251,6 +251,7 @@ public class App {
         System.exit(exitCode);
     }
 
+
     private static String systemShutdownCommand(int timeout) {
         String shutdownCommand = null;
 
@@ -271,7 +272,7 @@ public class App {
                 SystemUtils.IS_OS_SUN_OS)
             shutdownCommand = "shutdown -y -i5 -g" + timeout;
         else if (SystemUtils.IS_OS_WINDOWS)
-            shutdownCommand = "shutdown -s -t " + timeout;
+            shutdownCommand = "shutdown -s -t " + (timeout * 60);
 
         return shutdownCommand;
     }
