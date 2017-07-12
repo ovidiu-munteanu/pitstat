@@ -56,6 +56,8 @@ public class App {
                     switch (projectExists(projectPath)) {
                         case 1:
                             System.err.println("Cannot access the specified project directory: " + projectPath);
+                            if (SystemUtils.IS_OS_WINDOWS)
+                                System.out.println("Tip: in Windows you need to write the path between inverted commas or use \"/\" instead of \"\\\"");
                             systemExit(1);
                         case 2:
                             System.err.println("The specified project path is not a directory: " + projectPath);
@@ -79,6 +81,8 @@ public class App {
                     switch (reportsPathOK(pitStatReportsPath)) {
                         case 1:
                             System.err.println("Cannot access the specified reports directory: " + projectPath);
+                            if (SystemUtils.IS_OS_WINDOWS)
+                                System.out.println("Tip: in Windows you need to write the path between inverted commas or use \"/\" instead of \"\\\"");
                             systemExit(1);
                         case 2:
                             System.err.println("The specified reports path is not a directory: " + projectPath);

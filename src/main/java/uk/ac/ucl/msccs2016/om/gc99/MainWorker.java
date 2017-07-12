@@ -99,7 +99,15 @@ class MainWorker implements Worker {
         commandExecutor = new CommandExecutor();
 
         mavenInvoker = new DefaultInvoker();
-//        mavenInvoker.setMavenHome(new File(System.getenv("M2_HOME")));
+
+        String mavenHome = System.getenv("M2_HOME");
+        if (mavenHome != null) {
+            mavenInvoker.setMavenHome(new File(mavenHome));
+        } else {
+            System.err.println("Maven home environment variable not set.");
+            System.out.println("Tip: the M2_HOME environment variable needs to point to the path of your maven installation");
+            App.systemExit(98);
+        }
 
         invocationRequest = new DefaultInvocationRequest();
         invocationRequest.setGoals(Arrays.asList(mvnGoalTest, mvnGoalPitest));
@@ -300,7 +308,7 @@ class MainWorker implements Worker {
                     // We consumed the "@@" line in the while loop above so we need to go back one iteration
                     diffOutputIterator.previous();
 
-                    int diffOldPointer, diffOldLinesNo, diffNewPointer, diffNewLinesNo;
+                    int /* diffOldPointer, diffOldLinesNo, */ diffNewPointer, diffNewLinesNo;
                     int oldFileLinePointer = 1, newFileLinePointer = 1, lineOffset = 0;
 
                     while (diffOutputIterator.hasNext()) {
@@ -325,8 +333,8 @@ class MainWorker implements Worker {
                             String split[] = diffLine.split(",|\\s");
 
 
-                            diffOldPointer = Integer.valueOf(split[0]);
-                            diffOldLinesNo = Integer.valueOf(split[1]);
+//                            diffOldPointer = Integer.valueOf(split[0]);
+//                            diffOldLinesNo = Integer.valueOf(split[1]);
                             diffNewPointer = Integer.valueOf(split[2]);
                             diffNewLinesNo = Integer.valueOf(split[3]);
 
@@ -591,7 +599,25 @@ class MainWorker implements Worker {
             if (mutation.detected && killingTestElement.length() > 0) {
                 MutatedFile.KillingTest killingTest = new MutatedFile.KillingTest();
                 killingTest.testMethod = killingTestElement.substring(0, killingTestElement.lastIndexOf("("));
-                killingTest.testFile = killingTestElement.substring(killingTestElement.lastIndexOf("(") + 1, killingTestElement.length() - 1) + ".java";
+
+                killingTest.testFileName =
+                        Paths.get(mavenJavaTestSrcPath,
+                                killingTestElement.substring(
+                                        killingTestElement.lastIndexOf("(") + 1,
+                                        killingTestElement.length() - 1
+                                ).replace(".", "/") + ".java"
+                        ).toString();
+
+                if (!isEndCommit) {
+                    if (changedFiles.containsKey(killingTest.testFileName)) {
+                        killingTest.testFileChangeType = changedFiles.get(killingTest.testFileName).changeType;
+                    } else {
+                        killingTest.testFileChangeType = "UNCHANGED";
+                    }
+                } else {
+                    killingTest.testFileChangeType = "N/A";
+                }
+
                 mutation.killingTest = killingTest;
             } else {
                 mutation.killingTest = null;
@@ -605,19 +631,19 @@ class MainWorker implements Worker {
                     // mutations in unchanged files may change due to changes in test files
 
                     // this is not a correct assumption
-                    mutation.changeStatus = "UNCHANGED";
+                    mutation.lineStatus = "UNCHANGED";
 
                 } else if ("AC".contains(mutatedFile.changeType)) {
-                    mutation.changeStatus = "ADDED";
+                    mutation.lineStatus = "ADDED";
                 } else if ("MR".contains(mutatedFile.changeType)) {
-                    mutation.changeStatus = changedFiles.get(mutatedFileName).newFile.get(mutation.lineNo).status;
+                    mutation.lineStatus = changedFiles.get(mutatedFileName).newFile.get(mutation.lineNo).status;
                 } else {
                     // unexpected: unknown and unhandled change type
                     System.err.println("runPitMutationTesting(): unknown change type found: " + mutatedFile.changeType);
-                    mutation.changeStatus = mutatedFile.changeType;
+                    mutation.lineStatus = mutatedFile.changeType;
                 }
             } else {
-                mutation.changeStatus = "N/A";
+                mutation.lineStatus = "N/A";
             }
 
             if (mutatedMethod.mutations.contains(mutation)) {
@@ -645,7 +671,7 @@ class MainWorker implements Worker {
     }
 
 
-    private void runPitMatrixAnalysis() throws Exception{
+    private void runPitMatrixAnalysis() throws Exception {
 
         int[][] pitMatrix = new int[pitMatrixSize][pitMatrixSize];
 
@@ -1145,7 +1171,7 @@ class MainWorker implements Worker {
 
     private String getGitBranch(String commit) {
 
-        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionPath + projectPath;
 
         String command = gitRevParseCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<revParseOptions>", revParseOptionAbbrevRef);
@@ -1166,7 +1192,7 @@ class MainWorker implements Worker {
 
         String pitStatBranch = "pitstat" + startTime;
 
-        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionPath + projectPath;
 
         String command = gitCheckoutCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<checkoutOptions>", checkoutOptionNewBranch);
@@ -1183,7 +1209,7 @@ class MainWorker implements Worker {
 
 
     private void checkoutOriginalBranch() {
-        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionPath + projectPath;
 
         String command = gitCheckoutCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<checkoutOptions>", "");
@@ -1198,7 +1224,7 @@ class MainWorker implements Worker {
 
 
     private void deletePitStatBranch() {
-        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionPath + projectPath;
 
         String command = gitBranchCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<branchOptions>", branchDeleteOption + branchForceOption);
@@ -1214,7 +1240,7 @@ class MainWorker implements Worker {
 
     private void rollBackTo(String commit) {
 
-        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionPath + projectPath;
 
         String command = gitResetCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<resetOptions>", resetHardOption);
@@ -1229,7 +1255,7 @@ class MainWorker implements Worker {
 
 
     private List<String> getCommitsHashList() {
-        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionNoPager + gitOptionPath + projectPath;
 
         String command = gitRevListCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<revListOptions>", revListAllOption);
@@ -1248,7 +1274,7 @@ class MainWorker implements Worker {
 
         if (commit.length() == 0) return "";
 
-        String gitOptions = gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionPath + projectPath;
 
         String command = gitRevParseCommand.replace(gitOptionsPlaceholder, gitOptions);
         command = command.replace("<revParseOptions>", "");
@@ -1266,7 +1292,7 @@ class MainWorker implements Worker {
 
     private List<String> gitDiffNameStatus() {
 
-        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionNoPager + gitOptionPath + projectPath;
         String diffOptions = diffOptionNameStatus + diffOptionFindCopiesHarder;
         String gitOldFile = "", gitNewFile = "";
 
@@ -1290,10 +1316,10 @@ class MainWorker implements Worker {
 
     private List<String> gitDiff(String changedFile, String newFile) {
 
-        String gitOptions = gitOptionNoPager + gitOptionPath + wrapInvCommas(projectPath);
+        String gitOptions = gitOptionNoPager + gitOptionPath + projectPath;
         String diffOptions = diffOptionFindCopiesHarder + diffOptionNoContext;
-        String gitOldFile = " -- " + wrapInvCommas(changedFile);
-        String gitNewFile = " -- " + wrapInvCommas(newFile);
+        String gitOldFile = " -- " + changedFile;
+        String gitNewFile = " -- " + newFile;
 
         String command = buildGitDiffCommand(gitOptions, diffOptions, parentCommitHash, gitOldFile, currentCommitHash, gitNewFile);
 
@@ -1323,13 +1349,6 @@ class MainWorker implements Worker {
 
     private String paddingSpaces(int n) {
         return String.join("", Collections.nCopies(n, " "));
-    }
-
-
-    private String wrapInvCommas(String s) {
-//        return "\"" + s + "\"";
-        return s;
-
     }
 
 }

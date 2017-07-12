@@ -25,6 +25,7 @@ interface Worker {
     String pomFile = "pom.xml";
 
     String mavenJavaMainSrcPath = "src/main/java";
+    String mavenJavaTestSrcPath = "src/test/java";
 
     String pitReportsPath = "target/pit-reports";
     String pitMutationsFile = "mutations.xml";

@@ -28,35 +28,64 @@ class MutatedFile {
         boolean detected;
         String status;
         int lineNo;
+
+        String lineStatus;
+
         String mutator;
         int index;
         KillingTest killingTest;
         String description;
 
-        String changeStatus;
 
         Mutation() {
-            changeStatus = null;
+            lineStatus = null;
         }
 
         boolean equals(Mutation mutation) {
-            return lineNo == mutation.lineNo && mutator.equals(mutation.mutator) &&
-                    index == mutation.index && description.equals(mutation.description);
+            return index == mutation.index &&
+                    mutator.equals(mutation.mutator) &&
+                    description.equals(mutation.description) &&
+                    lineStatus.equals(mutation.lineStatus)
+                   /* && lineNo == mutation.lineNo */;
         }
+
+        void setKillingTestStatus(KillingTest oldKillingTest) {
+            if (oldKillingTest != null) {
+
+
+
+
+            } else {
+                killingTest.status = "NEW";
+            }
+        }
+
     }
 
     static class KillingTest {
-        String testFile;
+        String status;
+        String testFileName;
+        String testFileChangeType;
         String testMethod;
+        String testMethodStatus;
+
+        KillingTest() {
+            status = "UNKNOWN";
+            testMethodStatus = "UNKNOWN";
+        }
+
+        boolean equals(KillingTest killingTest) {
+            return testFileName.equals(killingTest.testFileName) &&
+                    testMethod.equals(killingTest.testMethod);
+        }
     }
 
-
-    HashMap<String, MutatedClass> mutatedClasses;
     String changeType;
+    HashMap<String, MutatedClass> mutatedClasses;
 
     MutatedFile() {
-        this.mutatedClasses = new HashMap<>();
         this.changeType = null;
+        this.mutatedClasses = new HashMap<>();
     }
 
 }
