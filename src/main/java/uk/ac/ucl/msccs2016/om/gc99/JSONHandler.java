@@ -18,8 +18,8 @@ class JSONHandler {
     private Gson gson;
 
     JSONHandler() {
-        gson = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
-//        gson = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
+//        gson = new GsonBuilder().serializeNulls().disableHtmlEscaping().create();
+        gson = new GsonBuilder().serializeNulls().disableHtmlEscaping().setPrettyPrinting().create();
 
     }
 

@@ -279,6 +279,8 @@ class MainWorker implements Worker {
 
                 if ("AD".contains(diffStatus)) {
 
+                    // If the file is added or deleted it would be superfluous to also list all its lines
+                    // as added or deleted
                     System.out.println();
 
                 } else if ("MCR".contains(diffStatus)) {
@@ -430,6 +432,8 @@ class MainWorker implements Worker {
                 } else {
 
                     // TODO handle other file types of file changes?
+                    // At the moment, we only handle cases where files that are added, deleted, modified,
+                    // copied or renamed
                 }
 
                 ChangedFile changedFileEntry = new ChangedFile(changedFile, newFile, diffStatus, oldFileLines, newFileLines);
@@ -469,9 +473,6 @@ class MainWorker implements Worker {
         System.out.println("Mapping of line changes:");
         System.out.println("OLD" + paddingSpaces + ": NEW" + paddingSpaces + ":");
 
-        // TODO Decide whether to include map output line numbers
-//        int lineNo = 0;
-
         for (String mapLine : mapFileLines) {
 
             int oldLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
@@ -492,10 +493,6 @@ class MainWorker implements Worker {
             } else if (newLineNo == 0) {
                 mapLine = ANSI_RED + mapLine + ANSI_RESET;
             }
-
-            // TODO Decide whether to include map output line numbers
-//            String mapLineIndicator = String.format(format, ++lineNo);
-//            mapLine = mapLineIndicator + ": " + mapLine;
 
             System.out.println(mapLine);
         }
@@ -600,13 +597,11 @@ class MainWorker implements Worker {
                 MutatedFile.KillingTest killingTest = new MutatedFile.KillingTest();
                 killingTest.testMethod = killingTestElement.substring(0, killingTestElement.lastIndexOf("("));
 
-                killingTest.testFileName =
-                        Paths.get(mavenJavaTestSrcPath,
-                                killingTestElement.substring(
-                                        killingTestElement.lastIndexOf("(") + 1,
-                                        killingTestElement.length() - 1
-                                ).replace(".", "/") + ".java"
-                        ).toString();
+                killingTest.testFileName = mavenJavaTestSrcPath + "/" +
+                        killingTestElement.substring(
+                                killingTestElement.lastIndexOf("(") + 1,
+                                killingTestElement.length() - 1
+                        ).replace(".", "/") + ".java";
 
                 if (!isEndCommit) {
                     if (changedFiles.containsKey(killingTest.testFileName)) {
@@ -625,14 +620,7 @@ class MainWorker implements Worker {
 
             if (!isEndCommit) {
                 if (mutatedFile.changeType.equals("UNCHANGED")) {
-
-                    //TODO asses and address the issue of mutations in unchanged files
-                    // it is incorrect to assume that mutations in unchanged files are also unchanged;
-                    // mutations in unchanged files may change due to changes in test files
-
-                    // this is not a correct assumption
                     mutation.lineStatus = "UNCHANGED";
-
                 } else if ("AC".contains(mutatedFile.changeType)) {
                     mutation.lineStatus = "ADDED";
                 } else if ("MR".contains(mutatedFile.changeType)) {
@@ -722,8 +710,36 @@ class MainWorker implements Worker {
 
         DiffOutput diffOutput = loadDiffOutput(newCommit);
 
+        // First run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at
+        // each of the mutations in the new commit against those in the old commit.
         countMutations(newCommitPitOutput, true, oldCommitPitOutput, pitMatrix, diffOutput);
+
+        // NOTE however that while this first run looks at every mutation that exists in the new commit,
+        // it does not look at the mutations in the old commit; this is because it only looks one way - i.e.
+        // it loops through each mutation from each method from each class from each file in the new commit
+        // and checks to see if the same one exists in the old commit by picking the keys from the
+        // hash map of the old commit - therefore, it DOES NOT loop through the old commit.
+        // What this means is that the mutations that did exist in the old commit but no longer exist in the
+        // new commit are not picked up during this run and are not added to the statistic.
+        // As a result, a second run is required where the process is repeated, this time by looking the
+        // other way, i.e. looping through each mutation from the old commit and checking to see if a
+        // corresponding one exists in the new commit.
+        // Yet, it immediately becomes apparent that by using this simplistic approach all the mutations that
+        // exist in both commits would be looped through (and potentially counted) twice - once in the first
+        // run and then again in the second run. To avoid this issue, during the first run, every mutation
+        // from the new commit that is found in the old commit is added to the statistic and then is removed
+        // from the hash map storing the data for the old commit. This way, at the end of the first run, the
+        // hash map storing the data for the old commit will now contain only those mutations that did exist
+        // in the old commit but are no longer found in the new commit. Therefore, during the second run, only
+        // these mutations are looped through and added to the statistic. Furthermore, in such cases where
+        // there is no change in mutations between subsequent commits, the second run will effectively be
+        // skipped as the hash map storing the data for the old commit will have been emptied during the first
+        // run.
+
+        // Second run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at
+        // the mutations in the old commit against those in the new commit
         countMutations(oldCommitPitOutput, false, newCommitPitOutput, pitMatrix, diffOutput);
+
 
         int maxValue = 0;
 
@@ -790,36 +806,69 @@ class MainWorker implements Worker {
                     if (oldMutatedClass != null) {
                         oldMethodName = renamedFile ? newMethodName.replace(extractNameOnly(newFileName), extractNameOnly(oldFileName)) : newMethodName;
                         oldMutatedMethod = oldMutatedClass.mutatedMethods.get(oldMethodName);
+
+                        // If a method of the same name is found in the old mutated class, check if the method
+                        // signature matches; if the signature does not match, assume it's not the same method
+                        if (oldMutatedMethod != null &&
+                                !newMutatedMethod.description.equals(oldMutatedMethod.description))
+                            oldMutatedMethod = null;
+
                     } else {
                         oldMethodName = null;
                         oldMutatedMethod = null;
                     }
 
+                    // For the current method, iterate through each of its mutations
                     for (MutatedFile.Mutation newMutation : newMutatedMethod.mutations) {
 
+                        // Initially, assume that the mutation does not exist in the old commit
                         int matrixRow = nonExistentRowCol;
 
+                        // Check if the same mutated file, class and method was found in the old commit;
+                        // if this condition is not met, then the above assumption holds
                         if (oldMutatedFile != null && oldMutatedClass != null && oldMutatedMethod != null) {
 
                             Iterator<MutatedFile.Mutation> oldMutationsIterator = oldMutatedMethod.mutations.listIterator();
 
+                            // If the condition is met, we still need to iterate through each of the
+                            // mutations from the old commit and see if the same one is found
                             while (oldMutationsIterator.hasNext()) {
                                 MutatedFile.Mutation oldMutation = oldMutationsIterator.next();
-                                if (oldMutation.equals(newMutation)) {
+
+                                if (newMutation.equals(oldMutation)) {
+                                    // if the same mutation if found, the we need to add it to the
+                                    // relevant row in the statistics matrix
                                     matrixRow = getMatrixRowCol(oldMutation.status);
 
+                                    // and if we're looking at the new commit against the old commit (i.e. this is
+                                    // the first run - see long explanation in buildPitMatrix method) remove the
+                                    // mutation from the hash map storing the old commit
                                     if (isNewCommit) oldMutationsIterator.remove();
 
+                                    // then break out of the while loop as we've found the mutation we were looking for
                                     break;
                                 }
                             }
                         }
 
+                        // the columns in the statistics matrix correspond to the new commit and are therefore
+                        // fully determined by the status of the mutation in the new commit
                         int matrixCol = getMatrixRowCol(newMutation.status);
 
+
+                        // BIG NOTE: This method is used for both runs, i.e. new commit vs old commit AND
+                        // old commit vs new commit. However, the columns of the statistics matrix correspond
+                        // to the new commit, while the rows correspond to the old commit.
                         if (isNewCommit)
+                            // As such, if we are in the first run (i.e. new commit vs old commit) the variables
+                            // that define the rows and columns of the statistic matrix hold the meaning given by
+                            // their names:
                             pitMatrix[matrixRow][matrixCol]++;
+
                         else
+                            // if we are in the second run however, we are effectively looking the transposed
+                            // statistics matrix and therefore the meaning of the row and column variables is
+                            // also transposed:
                             pitMatrix[matrixCol][matrixRow]++;
 
                     }
@@ -1280,11 +1329,11 @@ class MainWorker implements Worker {
         command = command.replace("<revParseOptions>", "");
         command = command + commit;
 
-        commandExecutor.execute(command, true);
-//        commandExecutor.execute(command);
+//        commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
-        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
         return commandExecutor.getStandardOutput().get(0);
     }

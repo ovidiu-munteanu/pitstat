@@ -35,8 +35,8 @@ public class App {
 //        String projectPath = "D:/X/github/commons-collections";
 
         if (args.length == 0) {
-            System.out.println(getResourceFileAsString("help.txt"));
-            App.systemExit(0);
+            printHelp();
+            systemExit(0);
         }
 
         int i = -1;
@@ -45,6 +45,11 @@ public class App {
             String arg = args[i];
 
             switch (arg) {
+                case "-H":
+                case "--help":
+                    printHelp();
+                    systemExit(0);
+                    break;
                 case "-PP":
                 case "--project-path":
                     try {
@@ -155,7 +160,8 @@ public class App {
                     shutdown = true;
                     break;
                 default:
-                    System.err.println("Invalid argument: " + arg);
+                    System.err.println("Invalid argument: " + arg + "\n");
+                    printHelp();
                     systemExit(99);
             }
         }
@@ -182,6 +188,10 @@ public class App {
         if (shutdown) Runtime.getRuntime().exec(systemShutdownCommand(1));
         System.exit(0);
 
+    }
+
+    private static void printHelp(){
+        System.out.print(getResourceFileAsString("help.txt"));
     }
 
     private static int projectExists(String projPath) {
@@ -233,9 +243,15 @@ public class App {
         InputStream inputStream = App.class.getClassLoader().getResourceAsStream(resourceFile);
 
         try {
-            String inputLine;
             bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-            while ((inputLine = bufferedReader.readLine()) != null) stringBuilder.append(inputLine);
+            String inputLine = bufferedReader.readLine();
+            if (inputLine != null)
+                do {
+                    stringBuilder.append(inputLine);
+                    inputLine = bufferedReader.readLine();
+                    if (inputLine == null) break;
+                    stringBuilder.append("\n");
+                } while (true);
         } catch (IOException e) {
             e.printStackTrace();
         } finally {

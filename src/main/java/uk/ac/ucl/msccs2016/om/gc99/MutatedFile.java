@@ -44,21 +44,22 @@ class MutatedFile {
         boolean equals(Mutation mutation) {
             return index == mutation.index &&
                     mutator.equals(mutation.mutator) &&
-                    description.equals(mutation.description) &&
-                    lineStatus.equals(mutation.lineStatus)
-                   /* && lineNo == mutation.lineNo */;
+                    description.equals(mutation.description)
+//                  && lineStatus.equals("UNCHANGED")
+//                  && lineNo == mutation.lineNo
+                    ;
         }
 
-        void setKillingTestStatus(KillingTest oldKillingTest) {
-            if (oldKillingTest != null) {
-
-
-
-
-            } else {
-                killingTest.status = "NEW";
-            }
-        }
+//        void setKillingTestStatus(KillingTest oldKillingTest) {
+//            if (oldKillingTest != null) {
+//
+//
+//
+//
+//            } else {
+//                killingTest.status = "NEW";
+//            }
+//        }
 
     }
 
