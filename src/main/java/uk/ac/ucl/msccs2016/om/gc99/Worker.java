@@ -31,16 +31,25 @@ interface Worker {
     String pitMutationsFile = "mutations.xml";
 
 
-    String typeDiffOutput = "dif";
-    String typePitOutput = "pit";
-    String typeMatrixHumanOutput = "mxH";
-    String typeMatrixMachineOutput = "mxM";
+    String typeDiffHumanOutput = "difH";
+    String typeDiffMachineOutput = "difM";
+    String typePitOutput = "pitM";
+    String typeMatrixHumanOutput = "mtxH";
+    String typeMatrixMachineOutput = "mtxM";
 
+    String separator = "-";
+    String timestamp = "<timestamp>";
+    String hash = "<hash>";
+    String jsonType = ".json";
+    String textType = ".txt";
 
-    String diffOutputBaseFileName = typeDiffOutput + "-<date-hash>.json";
-    String pitOutputBaseFileName = typePitOutput + "-<date-hash>.json";
-    String matrixHumanOutputBaseFileName = typeMatrixHumanOutput + "-<date-hash>.txt";
-    String matrixMachineOutputBaseFileName = typeMatrixMachineOutput + "-<date-hash>.txt";
+    String diffHumanOutputBaseFileName = typeDiffHumanOutput + separator + timestamp + separator + hash + textType;
+    String diffMachineOutputBaseFileName = typeDiffMachineOutput + separator + timestamp + separator + hash + jsonType;
+
+    String pitOutputBaseFileName = typePitOutput + separator + timestamp + separator + hash + jsonType;
+
+    String matrixHumanOutputBaseFileName = typeMatrixHumanOutput + separator + timestamp + separator + hash + textType;
+    String matrixMachineOutputBaseFileName = typeMatrixMachineOutput + separator + timestamp + separator + hash + textType;
 
 
     String mvnGoalTest = " test ";
@@ -97,7 +106,7 @@ interface Worker {
             "       T/O  ",
             "       M/E  ",
             "       R/E  ",
-          "\nNew commit\n" +
-            "    Totals  "};
+            "\nNew commit\n" +
+                    "    Totals  "};
 
 }

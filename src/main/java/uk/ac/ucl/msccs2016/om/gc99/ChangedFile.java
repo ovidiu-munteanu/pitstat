@@ -4,20 +4,20 @@ import java.util.List;
 
 class ChangedFile {
 
-    String oldFileName;
     String newFileName;
+    String oldFileName;
     String changeType;
-    List<LineOfCode> oldFile;
-    List<LineOfCode> newFile;
 
+    List<LineOfCode> mergedLines;
+    List<Integer> newLinesMap, oldLinesMap;
 
-    ChangedFile(String oldFileName, String newFileName, String changeType,
-                       List<LineOfCode> oldFile, List<LineOfCode> newFile) {
-        this.oldFileName = oldFileName;
+    ChangedFile(String newFileName, String oldFileName, String changeType,
+                List<LineOfCode> mergedLines, List<Integer> newLinesMap, List<Integer> oldLinesMap) {
         this.newFileName = newFileName;
+        this.oldFileName = oldFileName;
         this.changeType = changeType;
-        this.oldFile = oldFile;
-        this.newFile = newFile;
+        this.mergedLines = mergedLines;
+        this.newLinesMap = newLinesMap;
+        this.oldLinesMap = oldLinesMap;
     }
-
 }

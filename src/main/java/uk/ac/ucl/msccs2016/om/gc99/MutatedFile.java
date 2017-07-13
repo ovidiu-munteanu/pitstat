@@ -35,38 +35,12 @@ class MutatedFile {
         int index;
         KillingTest killingTest;
         String description;
-
-
-        Mutation() {
-            lineStatus = null;
-        }
-
-        boolean equals(Mutation mutation) {
-            return index == mutation.index &&
-                    mutator.equals(mutation.mutator) &&
-                    description.equals(mutation.description)
-//                  && lineStatus.equals("UNCHANGED")
-//                  && lineNo == mutation.lineNo
-                    ;
-        }
-
-//        void setKillingTestStatus(KillingTest oldKillingTest) {
-//            if (oldKillingTest != null) {
-//
-//
-//
-//
-//            } else {
-//                killingTest.status = "NEW";
-//            }
-//        }
-
     }
 
     static class KillingTest {
         String status;
         String testFileName;
-        String testFileChangeType;
+        String testFileChangeStatus;
         String testMethod;
         String testMethodStatus;
 
@@ -74,18 +48,13 @@ class MutatedFile {
             status = "UNKNOWN";
             testMethodStatus = "UNKNOWN";
         }
-
-        boolean equals(KillingTest killingTest) {
-            return testFileName.equals(killingTest.testFileName) &&
-                    testMethod.equals(killingTest.testMethod);
-        }
     }
 
-    String changeType;
+    String changeStatus;
     HashMap<String, MutatedClass> mutatedClasses;
 
     MutatedFile() {
-        this.changeType = null;
+        this.changeStatus = null;
         this.mutatedClasses = new HashMap<>();
     }
 

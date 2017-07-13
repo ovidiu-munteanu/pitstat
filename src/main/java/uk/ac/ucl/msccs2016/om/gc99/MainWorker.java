@@ -70,6 +70,7 @@ class MainWorker implements Worker {
 
     private String outputPath;
 
+    private StringBuilder diffHumanOutput;
 
     private boolean isEndCommit;
     private HashMap<String, ChangedFile> changedFiles;
@@ -86,18 +87,7 @@ class MainWorker implements Worker {
 
         startTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
-
-        this.projectPath = projectPath;
-        this.pitStatReportsPath = pitStatReportsPath;
-        this.pitStatReportsPathRelative = pitStatReportsPathRelative;
-        this.createTimestampDirectory = createTimestampDirectory;
-        this.startCommit = startCommit;
-        this.endCommit = endCommit;
-        this.maxRollbacks = maxRollbacks;
-
-
         commandExecutor = new CommandExecutor();
-
         mavenInvoker = new DefaultInvoker();
 
         String mavenHome = System.getenv("M2_HOME");
@@ -116,6 +106,14 @@ class MainWorker implements Worker {
         documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 
         jsonHandler = new JSONHandler();
+
+        this.projectPath = projectPath;
+        this.pitStatReportsPath = pitStatReportsPath;
+        this.pitStatReportsPathRelative = pitStatReportsPathRelative;
+        this.createTimestampDirectory = createTimestampDirectory;
+        this.startCommit = startCommit;
+        this.endCommit = endCommit;
+        this.maxRollbacks = maxRollbacks;
     }
 
 
@@ -185,18 +183,24 @@ class MainWorker implements Worker {
         do {
             System.out.println("\nRollback: " + currentRollback++);
 
-            System.out.println("Current commit hash: " +
-                    (currentCommitHash.length() > 0 ? currentCommitHash : "currently at staged changes (not committed) -> no hash"));
-            System.out.println("Parent  commit hash: " + parentCommitHash);
-            System.out.println();
+            String currentCommitOutput = "Current commit hash: " + (currentCommitHash.length() > 0 ?
+                    currentCommitHash : "currently at staged changes (not committed) -> no hash") + "\n";
+            String parentCommitOutput = "Parent  commit hash: " + parentCommitHash + "\n\n";
+
+            System.out.print(currentCommitOutput);
+            System.out.print(parentCommitOutput);
 
             isEndCommit = currentCommitHash.equals(endCommitHash);
 
-            if (isEndCommit)
+            if (isEndCommit) {
                 System.out.println("Currently at end commit for this run (" + currentCommitHash + ") -> skipping git diff\n");
-            else
-                runGitDiff();
+            } else {
+                diffHumanOutput = new StringBuilder();
+                diffHumanOutput.append(currentCommitOutput);
+                diffHumanOutput.append(parentCommitOutput);
 
+                runGitDiff();
+            }
 
             runPitMutationTesting();
 
@@ -228,14 +232,12 @@ class MainWorker implements Worker {
         changedFiles = new HashMap<>(hashMapCapacity);
 
         if (nameStatusList.size() == 0) {
+            String noDifferenceOutput = "No difference between " + parentCommitHash + " and " +
+                    (currentCommitHash.equals("") ? "staged changes" : currentCommitHash) + "\n";
 
-            System.out.println("No difference between " + parentCommitHash + " and " +
-                    (currentCommitHash.equals("") ? "staged changes" : currentCommitHash) + "\n");
-
+            diffHumanOutput.append(noDifferenceOutput);
+            System.out.println(noDifferenceOutput);
         } else {
-
-//            int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
-//            changedFiles = new HashMap<>(hashMapCapacity);
 
             for (String nameStatusLine : nameStatusList) {
 
@@ -245,51 +247,62 @@ class MainWorker implements Worker {
 
                 String changedFile = splitLine[1], newFile = null;
 
+                StringBuilder diffStatusOutput = new StringBuilder();
+                boolean defaultCase = false;
+
                 switch (diffStatus) {
                     case "A":
-                        System.out.println("Added file:    " + changedFile);
+                        diffStatusOutput.append("Added file:    ");
                         break;
                     case "D":
-                        System.out.println("Deleted file:  " + changedFile);
+                        diffStatusOutput.append("Deleted file:  ");
                         break;
                     case "M":
-                        System.out.println("Modified file: " + changedFile);
+                        diffStatusOutput.append("Modified file: ");
                         break;
                     case "C":
                         newFile = splitLine[2];
-                        System.out.println("Copied file:   " + changedFile + " --> " + newFile);
+                        diffStatusOutput.append("Copied file:   ");
                         break;
                     case "R":
                         newFile = splitLine[2];
-                        System.out.println("Renamed file:  " + changedFile + " --> " + newFile);
+                        diffStatusOutput.append("Renamed file:  ");
                         break;
                     default:
-                        System.out.print("Change type " + diffStatus + " unsupported: ");
+                        defaultCase = true;
+                        diffStatusOutput.append("Change type " + diffStatus + " unsupported: ");
                         for (int i = 1; i < splitLine.length; i++) {
-                            if (i > 1) System.out.print(" --> ");
-                            System.out.print(splitLine[i]);
+                            if (i > 1) diffStatusOutput.append(" --> ");
+                            diffStatusOutput.append(splitLine[i]);
                         }
-                        System.out.println();
                 }
+
+                if (!defaultCase) diffStatusOutput.append(changedFile);
+                if (newFile != null) diffStatusOutput.append(" --> " + newFile);
+
+                diffStatusOutput.append("\n");
+
+                diffHumanOutput.append(diffStatusOutput);
+                System.out.print(diffStatusOutput);
 
                 if (newFile == null && !diffStatus.equals("D")) newFile = changedFile;
                 if (diffStatus.equals("A")) changedFile = null;
 
-                List<LineOfCode> oldFileLines = null, newFileLines = null;
+                List<LineOfCode> mergedLines = null;
+                List<Integer> newLinesMap = null, oldLinesMap = null;
 
-                if ("AD".contains(diffStatus)) {
+                if ("ACD".contains(diffStatus)) {
 
                     // If the file is added or deleted it would be superfluous to also list all its lines
                     // as added or deleted
+                    diffHumanOutput.append("\n");
                     System.out.println();
 
-                } else if ("MCR".contains(diffStatus)) {
+                } else if ("MR".contains(diffStatus)) {
 
                     List<String> mapFileLines = Files.readAllLines(Paths.get(projectPath, newFile), StandardCharsets.UTF_8);
+                    mapFileLines.add(0, null);
                     int mapFileLinePointer = 1;
-
-                    oldFileLines = new ArrayList<>();
-                    newFileLines = new ArrayList<>();
 
                     // git diff between previous and current version of the specific file
                     List<String> diffOutputLines = gitDiff(changedFile, newFile);
@@ -302,7 +315,7 @@ class MainWorker implements Worker {
                     // If the file was copied or renamed but not modified (100% similarity) then the while loop above
                     // will have reached the end of the diff output so we need to continue with the next changed file
                     if (!diffOutputIterator.hasNext()) {
-                        ChangedFile changedFileEntry = new ChangedFile(changedFile, newFile, diffStatus, null, null);
+                        ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines, newLinesMap, oldLinesMap);
                         changedFiles.put(changedFile, changedFileEntry);
                         continue;
                     }
@@ -310,7 +323,16 @@ class MainWorker implements Worker {
                     // We consumed the "@@" line in the while loop above so we need to go back one iteration
                     diffOutputIterator.previous();
 
-                    int /* diffOldPointer, diffOldLinesNo, */ diffNewPointer, diffNewLinesNo;
+                    mergedLines = new ArrayList<>();
+                    newLinesMap = new ArrayList<>();
+                    oldLinesMap = new ArrayList<>();
+
+                    mergedLines.add(null);
+                    newLinesMap.add(null);
+                    oldLinesMap.add(null);
+
+//                    int diffOldPointer, diffOldLinesNo;
+                    int diffNewPointer, diffNewLinesNo;
                     int oldFileLinePointer = 1, newFileLinePointer = 1, lineOffset = 0;
 
                     while (diffOutputIterator.hasNext()) {
@@ -334,7 +356,6 @@ class MainWorker implements Worker {
                             diffLine = diffLine.replace("+", "");
                             String split[] = diffLine.split(",|\\s");
 
-
 //                            diffOldPointer = Integer.valueOf(split[0]);
 //                            diffOldLinesNo = Integer.valueOf(split[1]);
                             diffNewPointer = Integer.valueOf(split[2]);
@@ -356,19 +377,18 @@ class MainWorker implements Worker {
 
                                 while (mapFileLinePointer < actualNewPointer) {
 
-                                    String unchangedLine = mapFileLines.get(mapFileLinePointer - 1);
+                                    String unchangedLine = mapFileLines.get(mapFileLinePointer);
+                                    LineOfCode lineOfCode = new LineOfCode(unchangedLine, "UNCHANGED", newFileLinePointer, oldFileLinePointer);
 
-                                    // add the unchanged line of code to both the old and new file trackers
-                                    LineOfCode lineOfCode = new LineOfCode(unchangedLine, "UNCHANGED");
-                                    oldFileLines.add(lineOfCode);
-                                    newFileLines.add(lineOfCode);
+                                    mergedLines.add(lineOfCode);
+                                    newLinesMap.add(mapFileLinePointer);
+                                    oldLinesMap.add(mapFileLinePointer);
 
                                     String numberedLine = oldFileLinePointer + ":" + newFileLinePointer + ": " + unchangedLine;
-                                    mapFileLines.set(mapFileLinePointer - 1, numberedLine);
+                                    mapFileLines.set(mapFileLinePointer, numberedLine);
 
-                                    oldFileLinePointer++;
                                     newFileLinePointer++;
-
+                                    oldFileLinePointer++;
                                     mapFileLinePointer++;
                                 }
 
@@ -377,12 +397,13 @@ class MainWorker implements Worker {
                         } else if (diffLine.startsWith("-")) {
 
                             String oldLine = diffLine.substring(1);
+                            LineOfCode lineOfCode = new LineOfCode(oldLine, "DELETED", 0, oldFileLinePointer);
 
-                            oldFileLines.add(new LineOfCode(oldLine, "DELETED"));
+                            mergedLines.add(lineOfCode);
+                            oldLinesMap.add(mapFileLinePointer);
 
                             diffLine = oldFileLinePointer + ":0: " + oldLine;
-
-                            mapFileLines.add(mapFileLinePointer - 1, diffLine);
+                            mapFileLines.add(mapFileLinePointer, diffLine);
 
                             mapFileLinePointer++;
                             oldFileLinePointer++;
@@ -391,13 +412,13 @@ class MainWorker implements Worker {
                         } else if (diffLine.startsWith("+")) {
 
                             String newLine = diffLine.substring(1);
+                            LineOfCode lineOfCode = new LineOfCode(newLine, "ADDED", newFileLinePointer, 0);
 
-                            newFileLines.add(new LineOfCode(newLine, "ADDED"));
+                            mergedLines.add(lineOfCode);
+                            newLinesMap.add(mapFileLinePointer);
 
                             diffLine = "0:" + newFileLinePointer + ": " + newLine;
-
-
-                            mapFileLines.set(mapFileLinePointer - 1, diffLine);
+                            mapFileLines.set(mapFileLinePointer, diffLine);
 
                             mapFileLinePointer++;
                             newFileLinePointer++;
@@ -410,24 +431,28 @@ class MainWorker implements Worker {
                     }
 
                     // write out any remaining lines after the last changed line
-                    ListIterator<String> mapFileIterator = mapFileLines.listIterator(mapFileLinePointer - 1);
+                    ListIterator<String> mapFileIterator = mapFileLines.listIterator(mapFileLinePointer);
                     while (mapFileIterator.hasNext()) {
 
                         String unchangedLine = mapFileIterator.next();
+                        LineOfCode lineOfCode = new LineOfCode(unchangedLine, "UNCHANGED", newFileLinePointer, oldFileLinePointer);
 
-                        LineOfCode lineOfCode = new LineOfCode(unchangedLine, "UNCHANGED");
-                        oldFileLines.add(lineOfCode);
-                        newFileLines.add(lineOfCode);
+                        mergedLines.add(lineOfCode);
+                        newLinesMap.add(mapFileLinePointer);
+                        oldLinesMap.add(mapFileLinePointer);
 
                         String mapFileLine = oldFileLinePointer + ":" + newFileLinePointer + ": " + unchangedLine;
-
                         mapFileIterator.set(mapFileLine);
 
                         oldFileLinePointer++;
                         newFileLinePointer++;
+                        mapFileLinePointer++;
                     }
 
-                    printOutDiffMap(mapFileLines);
+                    String mapFileLinesOutput = formatDiffMapOutput(mapFileLines);
+
+                    diffHumanOutput.append(mapFileLinesOutput.replaceAll("(\\\u001B\\[0m)|(\\\u001B\\[31m)|(\\\u001B\\[32m)", ""));
+                    System.out.print(mapFileLinesOutput);
 
                 } else {
 
@@ -436,7 +461,7 @@ class MainWorker implements Worker {
                     // copied or renamed
                 }
 
-                ChangedFile changedFileEntry = new ChangedFile(changedFile, newFile, diffStatus, oldFileLines, newFileLines);
+                ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines, newLinesMap, oldLinesMap);
 
                 if (!diffStatus.equals("D")) {
                     changedFiles.put(newFile, changedFileEntry);
@@ -446,22 +471,39 @@ class MainWorker implements Worker {
             }
         }
 
-        System.out.println("Modified files: " + nameStatusList.size() + "\n");
+        String modifiedFilesOutput = "Modified files: " + nameStatusList.size() + "\n";
 
-        DiffOutput diffOutput = new DiffOutput(parentCommitHash, currentCommitHash, changedFiles);
+        diffHumanOutput.append(modifiedFilesOutput);
+        System.out.println(modifiedFilesOutput);
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String commitHash = currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash;
 
-        // Write output file with results of git diff
-        String diffOutputFileName = diffOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
-                (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
+
+        // Write git diff human readable output
+        String diffHumanOutputFileName = diffHumanOutputBaseFileName;
+        diffHumanOutputFileName = diffHumanOutputFileName.replace(timestamp, outputTime);
+        diffHumanOutputFileName = diffHumanOutputFileName.replace(hash, commitHash);
+        Path diffHumanOutputPath = Paths.get(outputPath, diffHumanOutputFileName);
+        try {
+            Files.write(diffHumanOutputPath, diffHumanOutput.toString().getBytes());
+        } catch (IOException e) {
+            System.err.println("runGitDiff(): can't write diff output file for some reason");
+            e.printStackTrace();
+        }
+
+        // Write git diff machine readable output file
+        DiffOutput diffOutput = new DiffOutput(parentCommitHash, currentCommitHash, changedFiles);
+        String diffOutputFileName = diffMachineOutputBaseFileName;
+        diffOutputFileName = diffOutputFileName.replace(timestamp, outputTime);
+        diffOutputFileName = diffOutputFileName.replace(hash, commitHash);
         String diffOutputPath = Paths.get(outputPath, diffOutputFileName).toString();
-
         jsonHandler.saveDifToJSON(diffOutput, diffOutputPath);
     }
 
+    private String formatDiffMapOutput(List<String> mapFileLines) {
 
-    private void printOutDiffMap(List<String> mapFileLines) {
+        StringBuilder stringBuilder = new StringBuilder();
 
         // Calculate number of characters to use in formatting of line number based on number of lines in file
         // i.e. number of characters = 1 + digits in number of lines
@@ -470,10 +512,16 @@ class MainWorker implements Worker {
 
         String paddingSpaces = this.paddingSpaces(digitsNo - 3);
 
-        System.out.println("Mapping of line changes:");
-        System.out.println("OLD" + paddingSpaces + ": NEW" + paddingSpaces + ":");
+        stringBuilder.append("Mapping of line changes:\n");
+        stringBuilder.append("MAP" + paddingSpaces + ": NEW" + paddingSpaces + ": OLD" + paddingSpaces + "\n");
+
+        int mapLineNo = 0;
 
         for (String mapLine : mapFileLines) {
+
+            if (mapLine == null) continue;
+
+            String mapLineIndicator = String.format(format, ++mapLineNo);
 
             int oldLineNo = Integer.valueOf(mapLine.substring(0, mapLine.indexOf(":")));
             String oldLineIndicator = oldLineNo == 0 ? "N/E" + paddingSpaces : String.format(format, oldLineNo);
@@ -485,7 +533,7 @@ class MainWorker implements Worker {
 
             mapLine = mapLine.substring(mapLine.indexOf(":") + 1);
 
-            mapLine = oldLineIndicator + ": " + newLineIndicator + ": " + mapLine;
+            mapLine = newLineIndicator + ": " + oldLineIndicator + ": " + mapLine;
 
             // add line colour, i.e. green if added line, red if deleted line
             if (oldLineNo == 0) {
@@ -494,11 +542,12 @@ class MainWorker implements Worker {
                 mapLine = ANSI_RED + mapLine + ANSI_RESET;
             }
 
-            System.out.println(mapLine);
+            mapLine = mapLineIndicator + ": " + mapLine + "\n";
+            stringBuilder.append(mapLine);
         }
+        stringBuilder.append("\n");
 
-        System.out.println();
-
+        return stringBuilder.toString();
     }
 
 
@@ -560,12 +609,12 @@ class MainWorker implements Worker {
 
                 if (!isEndCommit) {
                     if (changedFiles.containsKey(mutatedFileName)) {
-                        mutatedFile.changeType = changedFiles.get(mutatedFileName).changeType;
+                        mutatedFile.changeStatus = changedFiles.get(mutatedFileName).changeType;
                     } else {
-                        mutatedFile.changeType = "UNCHANGED";
+                        mutatedFile.changeStatus = "UNCHANGED";
                     }
                 } else {
-                    mutatedFile.changeType = "N/A";
+                    mutatedFile.changeStatus = "N/A";
                 }
             }
 
@@ -605,12 +654,12 @@ class MainWorker implements Worker {
 
                 if (!isEndCommit) {
                     if (changedFiles.containsKey(killingTest.testFileName)) {
-                        killingTest.testFileChangeType = changedFiles.get(killingTest.testFileName).changeType;
+                        killingTest.testFileChangeStatus = changedFiles.get(killingTest.testFileName).changeType;
                     } else {
-                        killingTest.testFileChangeType = "UNCHANGED";
+                        killingTest.testFileChangeStatus = "UNCHANGED";
                     }
                 } else {
-                    killingTest.testFileChangeType = "N/A";
+                    killingTest.testFileChangeStatus = "N/A";
                 }
 
                 mutation.killingTest = killingTest;
@@ -619,16 +668,20 @@ class MainWorker implements Worker {
             }
 
             if (!isEndCommit) {
-                if (mutatedFile.changeType.equals("UNCHANGED")) {
+                if (mutatedFile.changeStatus.equals("UNCHANGED")) {
                     mutation.lineStatus = "UNCHANGED";
-                } else if ("AC".contains(mutatedFile.changeType)) {
+                } else if ("AC".contains(mutatedFile.changeStatus)) {
                     mutation.lineStatus = "ADDED";
-                } else if ("MR".contains(mutatedFile.changeType)) {
-                    mutation.lineStatus = changedFiles.get(mutatedFileName).newFile.get(mutation.lineNo).status;
+                } else if ("MR".contains(mutatedFile.changeStatus)) {
+
+                    int mapLineNo = changedFiles.get(mutatedFileName).newLinesMap.get(mutation.lineNo);
+
+                    mutation.lineStatus = changedFiles.get(mutatedFileName).mergedLines.get(mapLineNo).status;
+
                 } else {
                     // unexpected: unknown and unhandled change type
-                    System.err.println("runPitMutationTesting(): unknown change type found: " + mutatedFile.changeType);
-                    mutation.lineStatus = mutatedFile.changeType;
+                    System.err.println("runPitMutationTesting(): unknown change type found: " + mutatedFile.changeStatus);
+                    mutation.lineStatus = mutatedFile.changeStatus;
                 }
             } else {
                 mutation.lineStatus = "N/A";
@@ -651,8 +704,10 @@ class MainWorker implements Worker {
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
-        String pitOutputFileName = pitOutputBaseFileName.replace("<date-hash>", outputTime + "-" +
-                (currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash));
+        String pitOutputFileName = pitOutputBaseFileName;
+        pitOutputFileName = pitOutputFileName.replace(timestamp, outputTime);
+        pitOutputFileName = pitOutputFileName.replace(hash, currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash);
+
         String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
 
         jsonHandler.savePitToJSON(pitOutput, pitOutputPath);
@@ -670,17 +725,18 @@ class MainWorker implements Worker {
 
         String formattedPitMatrixOutput = formatPitMatrixOutput(pitMatrix, maxMutationsNo);
 
-
         System.out.println(formattedPitMatrixOutput);
 
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String commitHash = childCommitHash.equals("") ? "staged-changes-no-hash" : childCommitHash;
+
 
         // Write human readable output file with results of matrix analysis
-        String matrixHumanOutputFileName = matrixHumanOutputBaseFileName.replace("<date-hash>",
-                outputTime + "-" + (childCommitHash.equals("") ? "staged-changes-no-hash" : childCommitHash));
+        String matrixHumanOutputFileName = matrixHumanOutputBaseFileName;
+        matrixHumanOutputFileName = matrixHumanOutputFileName.replace(timestamp, outputTime);
+        matrixHumanOutputFileName = matrixHumanOutputFileName.replace(hash, commitHash);
         Path matrixHumanOutputPath = Paths.get(outputPath, matrixHumanOutputFileName);
-
         try {
             Files.write(matrixHumanOutputPath, formattedPitMatrixOutput.getBytes());
         } catch (IOException e) {
@@ -692,8 +748,10 @@ class MainWorker implements Worker {
         MatrixOutput matrixOutput = new MatrixOutput(childCommitHash, currentCommitHash, pitMatrix);
 
         // Write machine readable output file with results of matrix analysis
-        String matrixMachineOutputFileName = matrixMachineOutputBaseFileName.replace("<date-hash>",
-                outputTime + "-" + (childCommitHash.equals("") ? "staged-changes-no-hash" : childCommitHash));
+        String matrixMachineOutputFileName = matrixMachineOutputBaseFileName;
+        matrixMachineOutputFileName = matrixMachineOutputFileName.replace(timestamp, outputTime);
+        matrixMachineOutputFileName = matrixMachineOutputFileName.replace(hash, commitHash);
+
         String matrixMachineOutputPath = Paths.get(outputPath, matrixMachineOutputFileName).toString();
 
         jsonHandler.saveMatrixToJSON(matrixOutput, matrixMachineOutputPath);
@@ -806,13 +864,6 @@ class MainWorker implements Worker {
                     if (oldMutatedClass != null) {
                         oldMethodName = renamedFile ? newMethodName.replace(extractNameOnly(newFileName), extractNameOnly(oldFileName)) : newMethodName;
                         oldMutatedMethod = oldMutatedClass.mutatedMethods.get(oldMethodName);
-
-                        // If a method of the same name is found in the old mutated class, check if the method
-                        // signature matches; if the signature does not match, assume it's not the same method
-                        if (oldMutatedMethod != null &&
-                                !newMutatedMethod.description.equals(oldMutatedMethod.description))
-                            oldMutatedMethod = null;
-
                     } else {
                         oldMethodName = null;
                         oldMutatedMethod = null;
@@ -835,8 +886,21 @@ class MainWorker implements Worker {
                             while (oldMutationsIterator.hasNext()) {
                                 MutatedFile.Mutation oldMutation = oldMutationsIterator.next();
 
-                                if (newMutation.equals(oldMutation)) {
-                                    // if the same mutation if found, the we need to add it to the
+                                int newMutationOldLineNo = newMutation.lineNo;
+
+                                if (diffOutput.changedFiles.containsKey(newFileName)) {
+                                    ChangedFile changedFile = diffOutput.changedFiles.get(newFileName);
+                                    int mapLineNo = changedFile.newLinesMap.get(newMutation.lineNo);
+                                    newMutationOldLineNo = changedFile.mergedLines.get(mapLineNo).oldLineNo;
+                                }
+
+                                boolean isSameMutation = newMutationOldLineNo == oldMutation.lineNo &&
+                                        newMutation.index == oldMutation.index &&
+                                        newMutation.mutator.equals(oldMutation.mutator) &&
+                                        newMutation.description.equals(oldMutation.description);
+
+                                if (isSameMutation) {
+                                    // if the same mutation if found, then we need to add it to the
                                     // relevant row in the statistics matrix
                                     matrixRow = getMatrixRowCol(oldMutation.status);
 
@@ -985,7 +1049,7 @@ class MainWorker implements Worker {
 
 
     private DiffOutput loadDiffOutput(String commitHash) {
-        return (DiffOutput) loadOutput(commitHash, typeDiffOutput);
+        return (DiffOutput) loadOutput(commitHash, typeDiffMachineOutput);
     }
 
 
@@ -998,7 +1062,7 @@ class MainWorker implements Worker {
         String outputFileName = getOutputFileName(commitHash, outputType, outputPath);
         try {
             switch (outputType) {
-                case typeDiffOutput:
+                case typeDiffMachineOutput:
                     return jsonHandler.loadDifFromJSON(outputFileName);
                 case typePitOutput:
                     return jsonHandler.loadPitFromJSON(outputFileName);
