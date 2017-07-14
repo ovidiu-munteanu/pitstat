@@ -22,6 +22,11 @@ interface Worker {
     String ANSI_WHITE_BG = "\u001B[47m";
 
 
+    boolean prettyPrinting = true;
+
+    String tempDirectory = System.getProperty("java.io.tmpdir");
+    String fileSeparator = System.getProperty("file.separator");
+
     String pomFile = "pom.xml";
 
     String mavenJavaMainSrcPath = "src/main/java";
@@ -33,23 +38,23 @@ interface Worker {
 
     String typeDiffHumanOutput = "difH";
     String typeDiffMachineOutput = "difM";
-    String typePitOutput = "pitM";
+    String typePitMachineOutput = "pitM";
     String typeMatrixHumanOutput = "mtxH";
     String typeMatrixMachineOutput = "mtxM";
 
     String separator = "-";
     String timestamp = "<timestamp>";
     String hash = "<hash>";
-    String jsonType = ".json";
-    String textType = ".txt";
+    String jsonExtension = ".json";
+    String textExtension = ".txt";
+    String zipExtension = ".zip";
 
-    String diffHumanOutputBaseFileName = typeDiffHumanOutput + separator + timestamp + separator + hash + textType;
-    String diffMachineOutputBaseFileName = typeDiffMachineOutput + separator + timestamp + separator + hash + jsonType;
+    String diffHumanOutputBaseFileName = typeDiffHumanOutput + separator + timestamp + separator + hash + textExtension;
+    String matrixHumanOutputBaseFileName = typeMatrixHumanOutput + separator + timestamp + separator + hash + textExtension;
 
-    String pitOutputBaseFileName = typePitOutput + separator + timestamp + separator + hash + jsonType;
-
-    String matrixHumanOutputBaseFileName = typeMatrixHumanOutput + separator + timestamp + separator + hash + textType;
-    String matrixMachineOutputBaseFileName = typeMatrixMachineOutput + separator + timestamp + separator + hash + textType;
+    String diffMachineOutputBaseFileName = typeDiffMachineOutput + separator + timestamp + separator + hash + jsonExtension;
+    String matrixMachineOutputBaseFileName = typeMatrixMachineOutput + separator + timestamp + separator + hash + jsonExtension;
+    String pitMachineOutputBaseFileName = typePitMachineOutput + separator + timestamp + separator + hash + jsonExtension;
 
 
     String mvnGoalTest = " test ";
@@ -106,7 +111,7 @@ interface Worker {
             "       T/O  ",
             "       M/E  ",
             "       R/E  ",
-            "\nNew commit\n" +
-                    "    Totals  "};
+          "\nNew commit\n" +
+            "    Totals  "};
 
 }

@@ -3,33 +3,33 @@ Pit Mutation Testing Statistic Analysis
 usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports-path | -RP <path>]
                                         [--start-commit | -SC <commit>]
                                         [ ( --end-commit | -EC <commit> ) | ( --rollbacks | -R <value> ) ]
-                                        [--no-timestamp | -NT] [--shutdown | -S]
-
-    --help,         -H      display this help screen
+                                        [--no-timestamp | -NT] [--shutdown | -S] [--help | -H]
 
     --project-path, -PP     path to project you wish to run pistat analysis on
-                                - set to current path by default
+                                - by default set to current path
 
     --reports-path, -RP     output path for pitstat reports
-                                - set to '<project-path>/target/pitstat-reports' by default
+                                - by default set to '<project-path>/target/pitstat-reports'
 
     --start-commit, -SC     most recent commit to start pitstat analysis from
-                                - set to index (staged changes) by default
+                                - by default set to index (staged changes)
                                 - <commit> may be specified as a short or long hash or in the format HEAD~[<value>]
                                   where <value> may be any positive integer number greater than zero, not exceeding
                                   the commit history of the current branch
 
     --end-commit,   -EC     oldest commit to finish pitstat analysis with
-                                - set to parent commit of start commit by default
+                                - by default set to parent commit of start commit
                                 - <commit> may be specified as a short or long hash or in the format HEAD~[<value>]
                                   where <value> may be any positive integer number greater than zero, not exceeding
                                   the commit history of the current branch
                             NOTE: may not be used together with rollbacks option
 
     --rollbacks,    -R      run pitstat analysis rolling back specified number of commits from start commit
-                                - set to 1 (parent of start commit) by default
+                                - by default set to 1 (parent of start commit)
                                 - <value> may be any positive integer number greater than zero, not exceeding the
-                                  commit history of the current branch
+                                  commit history of the current branch; alternatively, the keyword 'max' may be
+                                  used in which case pitstat will roll back through the entire branch history until
+                                  the initial commit is reached
                             NOTE: may not be used together with end commit option
 
     --no-timestamp, -NT     do not create timestamp sub-directory in pitstat reports directory
@@ -38,3 +38,5 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                 - a delay of 1 minute is allowed between completion of analysis and system shutdown
                             WARNING: forcibly kills all running processes and shuts down system
                             NOTE: dependent on user privileges on host system
+
+    --help,         -H      display this help screen

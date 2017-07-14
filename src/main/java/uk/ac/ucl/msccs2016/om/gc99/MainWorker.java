@@ -16,8 +16,11 @@ import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,11 +30,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 
 class MainWorker implements Worker {
@@ -105,7 +112,7 @@ class MainWorker implements Worker {
 
         documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
 
-        jsonHandler = new JSONHandler();
+        jsonHandler = new JSONHandler(prettyPrinting);
 
         this.projectPath = projectPath;
         this.pitStatReportsPath = pitStatReportsPath;
@@ -202,7 +209,11 @@ class MainWorker implements Worker {
                 runGitDiff();
             }
 
+            List<String> oldTempFiles = listTempFiles();
+
             runPitMutationTesting();
+
+            deleteNewTempFiles(oldTempFiles);
 
             if (childCommitHash != null) runPitMatrixAnalysis();
 
@@ -492,13 +503,17 @@ class MainWorker implements Worker {
             e.printStackTrace();
         }
 
+
         // Write git diff machine readable output file
         DiffOutput diffOutput = new DiffOutput(parentCommitHash, currentCommitHash, changedFiles);
-        String diffOutputFileName = diffMachineOutputBaseFileName;
-        diffOutputFileName = diffOutputFileName.replace(timestamp, outputTime);
-        diffOutputFileName = diffOutputFileName.replace(hash, commitHash);
-        String diffOutputPath = Paths.get(outputPath, diffOutputFileName).toString();
-        jsonHandler.saveDifToJSON(diffOutput, diffOutputPath);
+
+        String diffMachineOutputFileName = diffMachineOutputBaseFileName;
+        diffMachineOutputFileName = diffMachineOutputFileName.replace(timestamp, outputTime);
+        diffMachineOutputFileName = diffMachineOutputFileName.replace(hash, commitHash);
+//        String diffOutputPath = Paths.get(outputPath, diffMachineOutputFileName).toString();
+//        jsonHandler.saveDifToJSON(diffOutput, diffOutputPath);
+        OutputStream outputStream = zipFileOutputStream(outputPath, diffMachineOutputFileName);
+        jsonHandler.saveDifToJSON(diffOutput, outputStream);
     }
 
     private String formatDiffMapOutput(List<String> mapFileLines) {
@@ -704,13 +719,13 @@ class MainWorker implements Worker {
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
-        String pitOutputFileName = pitOutputBaseFileName;
+        String pitOutputFileName = pitMachineOutputBaseFileName;
         pitOutputFileName = pitOutputFileName.replace(timestamp, outputTime);
         pitOutputFileName = pitOutputFileName.replace(hash, currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash);
-
-        String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
-
-        jsonHandler.savePitToJSON(pitOutput, pitOutputPath);
+//        String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
+//        jsonHandler.savePitToJSON(pitOutput, pitOutputPath);
+        OutputStream outputStream = zipFileOutputStream(outputPath, pitOutputFileName);
+        jsonHandler.savePitToJSON(pitOutput, outputStream);
     }
 
 
@@ -745,17 +760,16 @@ class MainWorker implements Worker {
         }
 
 
+        // Write machine readable output file with results of matrix analysis
         MatrixOutput matrixOutput = new MatrixOutput(childCommitHash, currentCommitHash, pitMatrix);
 
-        // Write machine readable output file with results of matrix analysis
         String matrixMachineOutputFileName = matrixMachineOutputBaseFileName;
         matrixMachineOutputFileName = matrixMachineOutputFileName.replace(timestamp, outputTime);
         matrixMachineOutputFileName = matrixMachineOutputFileName.replace(hash, commitHash);
-
-        String matrixMachineOutputPath = Paths.get(outputPath, matrixMachineOutputFileName).toString();
-
-        jsonHandler.saveMatrixToJSON(matrixOutput, matrixMachineOutputPath);
-
+//        String matrixMachineOutputPath = Paths.get(outputPath, matrixMachineOutputFileName).toString();
+//        jsonHandler.saveMatrixToJSON(matrixOutput, matrixMachineOutputPath);
+        OutputStream outputStream = zipFileOutputStream(outputPath, matrixMachineOutputFileName);
+        jsonHandler.saveMatrixToJSON(matrixOutput, outputStream);
     }
 
 
@@ -849,7 +863,7 @@ class MainWorker implements Worker {
                 newMutatedClass = newMutatedClassEntry.getValue();
 
                 if (oldMutatedFile != null) {
-                    oldClassName = renamedFile ? newClassName.replace(extractNameOnly(newFileName), extractNameOnly(oldFileName)) : newClassName;
+                    oldClassName = renamedFile ? newClassName.replace(getNameOnly(newFileName), getNameOnly(oldFileName)) : newClassName;
                     oldMutatedClass = oldMutatedFile.mutatedClasses.get(oldClassName);
                 } else {
                     oldClassName = null;
@@ -862,7 +876,7 @@ class MainWorker implements Worker {
                     newMutatedMethod = newMutatedMethodEntry.getValue();
 
                     if (oldMutatedClass != null) {
-                        oldMethodName = renamedFile ? newMethodName.replace(extractNameOnly(newFileName), extractNameOnly(oldFileName)) : newMethodName;
+                        oldMethodName = renamedFile ? newMethodName.replace(getNameOnly(newFileName), getNameOnly(oldFileName)) : newMethodName;
                         oldMutatedMethod = oldMutatedClass.mutatedMethods.get(oldMethodName);
                     } else {
                         oldMethodName = null;
@@ -945,11 +959,6 @@ class MainWorker implements Worker {
             if (isNewCommit && oldMutatedFile != null && oldMutatedFile.mutatedClasses.size() == 0)
                 oldCommitPitOutput.mutatedFiles.remove(oldFileName);
         }
-    }
-
-
-    private String extractNameOnly(String qualifiedFileName) {
-        return qualifiedFileName.substring(qualifiedFileName.lastIndexOf("/") + 1, qualifiedFileName.lastIndexOf("."));
     }
 
 
@@ -1053,24 +1062,66 @@ class MainWorker implements Worker {
     }
 
 
+    private MatrixOutput loadMatrixOutput(String commitHash) {
+        return (MatrixOutput) loadOutput(commitHash, typeMatrixMachineOutput);
+    }
+
+
     private PitOutput loadPitOutput(String commitHash) {
-        return (PitOutput) loadOutput(commitHash, typePitOutput);
+        return (PitOutput) loadOutput(commitHash, typePitMachineOutput);
     }
 
 
     private Object loadOutput(String commitHash, String outputType) {
         String outputFileName = getOutputFileName(commitHash, outputType, outputPath);
+        boolean isZipFile = getExtension(outputFileName).equals(zipExtension);
         try {
             switch (outputType) {
                 case typeDiffMachineOutput:
-                    return jsonHandler.loadDifFromJSON(outputFileName);
-                case typePitOutput:
-                    return jsonHandler.loadPitFromJSON(outputFileName);
+                    return isZipFile ?
+                            jsonHandler.loadDifFromJSON(zipFileInputStream(outputFileName)) :
+                            jsonHandler.loadDifFromJSON(outputFileName);
+                case typeMatrixMachineOutput:
+                    return isZipFile ?
+                            jsonHandler.loadMatrixFromJSON(zipFileInputStream(outputFileName)) :
+                            jsonHandler.loadMatrixFromJSON(outputFileName);
+                case typePitMachineOutput:
+                    return isZipFile ?
+                            jsonHandler.loadPitFromJSON(zipFileInputStream(outputFileName)) :
+                            jsonHandler.loadPitFromJSON(outputFileName);
             }
         } catch (Exception e) {
             System.err.println("The " + outputType + " output file for commit " + commitHash + " could not be loaded.");
         }
         return null;
+    }
+
+
+    private OutputStream zipFileOutputStream(String rootPath, String sourceFile) throws IOException {
+        String zipFile = sourceFile.replace(getExtension(sourceFile), zipExtension);
+
+        Path zipFilePath = Paths.get(rootPath, zipFile);
+
+        ZipOutputStream zipOutputStream = new ZipOutputStream(Files.newOutputStream(zipFilePath));
+        zipOutputStream.putNextEntry(new ZipEntry(sourceFile));
+
+        return new BufferedOutputStream(zipOutputStream);
+    }
+
+
+    private InputStream zipFileInputStream(String rootPath, String zipFileName) throws IOException {
+        return zipFileInputStream(Paths.get(rootPath, zipFileName).toString());
+    }
+
+
+    private InputStream zipFileInputStream(String qualifiedFileName) throws IOException {
+        Path zipFilePath = Paths.get(qualifiedFileName);
+
+        ZipInputStream zipInputStream = new ZipInputStream(Files.newInputStream(zipFilePath));
+        zipInputStream.getNextEntry();
+
+        return zipInputStream;
+
     }
 
 
@@ -1087,6 +1138,19 @@ class MainWorker implements Worker {
         return null;
     }
 
+    private String getNameOnly(String fileName) {
+        fileName = Paths.get(fileName).getFileName().toString();
+        int lastIndexOfDot = fileName.lastIndexOf(".");
+        return lastIndexOfDot > 0 ? fileName.substring(0, lastIndexOfDot) : fileName;
+    }
+
+
+    private String getExtension(String fileName) {
+        fileName = Paths.get(fileName).getFileName().toString();
+        int lastIndexOfDot = fileName.lastIndexOf(".");
+        return lastIndexOfDot > 0 ? fileName.substring(lastIndexOfDot) : "";
+    }
+
 
     private List<String> filesInDirectory(String directory) {
         List<String> filesInDirectory = new ArrayList<>();
@@ -1098,6 +1162,43 @@ class MainWorker implements Worker {
             return null;
         }
         return filesInDirectory;
+    }
+
+
+    private List<String> listTempFiles() {
+        return directoryContents(tempDirectory);
+    }
+
+
+    private List<String> directoryContents(String directory) {
+        List<String> directoryContents = new ArrayList<>();
+        try {
+            Files.list(Paths.get(directory))
+                    .forEach(file -> directoryContents.add(file.toString()));
+        } catch (IOException e) {
+            return null;
+        }
+        return directoryContents;
+    }
+
+
+    private void deleteNewTempFiles(List<String> oldTempFiles) {
+        try {
+            Files.list(Paths.get(tempDirectory))
+                    .forEach(file -> {
+                        if (!oldTempFiles.contains(file.toString()))
+                            try {
+                                Files.walk(file.toAbsolutePath())
+                                        .sorted(Comparator.reverseOrder())
+                                        .map(Path::toFile)
+                                        .forEach(File::delete);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                    });
+        } catch (IOException e) {
+            System.out.println("deleteNewTempFiles(): An IOException was thrown while deleting the new temp files.");
+        }
     }
 
 
