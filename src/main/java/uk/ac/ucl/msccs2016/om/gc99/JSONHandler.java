@@ -28,7 +28,8 @@ class JSONHandler {
     }
 
     private void createGson(boolean prettyPrinting){
-        GsonBuilder gsonBuilder = new GsonBuilder().serializeNulls().disableHtmlEscaping();
+//        GsonBuilder gsonBuilder = new GsonBuilder().serializeNulls().disableHtmlEscaping();
+        GsonBuilder gsonBuilder = new GsonBuilder().disableHtmlEscaping();
         if (prettyPrinting)
             gsonBuilder = gsonBuilder.setPrettyPrinting();
         gson = gsonBuilder.create();

@@ -6,16 +6,16 @@ class ChangedFile {
 
     String newFileName;
     String oldFileName;
-    String changeType;
+    String diffStatus;
 
     List<LineOfCode> mergedLines;
     List<Integer> newLinesMap, oldLinesMap;
 
-    ChangedFile(String newFileName, String oldFileName, String changeType,
+    ChangedFile(String newFileName, String oldFileName, String diffStatus,
                 List<LineOfCode> mergedLines, List<Integer> newLinesMap, List<Integer> oldLinesMap) {
         this.newFileName = newFileName;
         this.oldFileName = oldFileName;
-        this.changeType = changeType;
+        this.diffStatus = diffStatus;
         this.mergedLines = mergedLines;
         this.newLinesMap = newLinesMap;
         this.oldLinesMap = oldLinesMap;

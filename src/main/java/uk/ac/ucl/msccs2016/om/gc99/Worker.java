@@ -22,87 +22,91 @@ interface Worker {
     String ANSI_WHITE_BG = "\u001B[47m";
 
 
-    boolean prettyPrinting = true;
+    boolean PRETTY_PRINTING = true;
 
-    String tempDirectory = System.getProperty("java.io.tmpdir");
-    String fileSeparator = System.getProperty("file.separator");
+    String TEMP_DIRECTORY = System.getProperty("java.io.tmpdir");
+    String FILE_SEPARATOR = System.getProperty("file.separator");
 
-    String pomFile = "pom.xml";
+    String POM_FILE = "pom.xml";
 
-    String mavenJavaMainSrcPath = "src/main/java";
-    String mavenJavaTestSrcPath = "src/test/java";
+    String MAVEN_HOME = "M2_HOME";
+    String MAVEN_JAVA_MAIN_SRC_PATH = "src/main/java";
+    String MAVEN_JAVA_TEST_SRC_PATH = "src/test/java";
 
-    String pitReportsPath = "target/pit-reports";
-    String pitMutationsFile = "mutations.xml";
+    String PIT_REPORTS_PATH = "target/pit-reports";
+    String PIT_MUTATIONS_FILE = "mutations.xml";
 
+    String TIMESTAMP_PATTERN = "yyyyMMddHHmmss";
 
-    String typeDiffHumanOutput = "difH";
-    String typeDiffMachineOutput = "difM";
-    String typePitMachineOutput = "pitM";
-    String typeMatrixHumanOutput = "mtxH";
-    String typeMatrixMachineOutput = "mtxM";
+    String TYPE_DIFF_HUMAN_OUTPUT = "difH";
+    String TYPE_DIFF_MACHINE_OUTPUT = "difM";
+    String TYPE_PIT_MACHINE_OUTPUT = "pitM";
+    String TYPE_MATRIX_HUMAN_OUTPUT = "mtxH";
+    String TYPE_MATRIX_MACHINE_OUTPUT = "mtxM";
 
-    String separator = "-";
-    String timestamp = "<timestamp>";
-    String hash = "<hash>";
-    String jsonExtension = ".json";
-    String textExtension = ".txt";
-    String zipExtension = ".zip";
+    String SEPARATOR = "-";
+    String TIMESTAMP_PLACEHOLDER = "<timestamp>";
+    String HASH_PLACEHOLDER = "<hash>";
+    String JSON_EXTENSION = ".json";
+    String TEXT_EXTENSION = ".txt";
+    String ZIP_EXTENSION = ".zip";
 
-    String diffHumanOutputBaseFileName = typeDiffHumanOutput + separator + timestamp + separator + hash + textExtension;
-    String matrixHumanOutputBaseFileName = typeMatrixHumanOutput + separator + timestamp + separator + hash + textExtension;
+    String DIFF_HUMAN_OUTPUT_BASE_FILE_NAME = TYPE_DIFF_HUMAN_OUTPUT + SEPARATOR + TIMESTAMP_PLACEHOLDER + SEPARATOR + HASH_PLACEHOLDER + TEXT_EXTENSION;
+    String MATRIX_HUMAN_OUTPUT_BASE_FILE_NAME = TYPE_MATRIX_HUMAN_OUTPUT + SEPARATOR + TIMESTAMP_PLACEHOLDER + SEPARATOR + HASH_PLACEHOLDER + TEXT_EXTENSION;
 
-    String diffMachineOutputBaseFileName = typeDiffMachineOutput + separator + timestamp + separator + hash + jsonExtension;
-    String matrixMachineOutputBaseFileName = typeMatrixMachineOutput + separator + timestamp + separator + hash + jsonExtension;
-    String pitMachineOutputBaseFileName = typePitMachineOutput + separator + timestamp + separator + hash + jsonExtension;
-
-
-    String mvnGoalTest = " test ";
-    String mvnGoalPitest = " org.pitest:pitest-maven:mutationCoverage ";
+    String DIFF_MACHINE_OUTPUT_BASE_FILE_NAME = TYPE_DIFF_MACHINE_OUTPUT + SEPARATOR + TIMESTAMP_PLACEHOLDER + SEPARATOR + HASH_PLACEHOLDER + JSON_EXTENSION;
+    String MATRIX_MACHINE_OUTPUT_BASE_FILE_NAME = TYPE_MATRIX_MACHINE_OUTPUT + SEPARATOR + TIMESTAMP_PLACEHOLDER + SEPARATOR + HASH_PLACEHOLDER + JSON_EXTENSION;
+    String PIT_MACHINE_OUTPUT_BASE_FILE_NAME = TYPE_PIT_MACHINE_OUTPUT + SEPARATOR + TIMESTAMP_PLACEHOLDER + SEPARATOR + HASH_PLACEHOLDER + JSON_EXTENSION;
 
 
-    String gitOptionsPlaceholder = "<gitOptions>";
+    String MVN_GOAL_TEST = " test ";
+    String MVN_GOAL_PITEST = " org.pitest:pitest-maven:mutationCoverage ";
 
-    String gitRevListCommand = "git <gitOptions> rev-list <revListOptions> ";
-    String revListAllOption = " --all ";
 
-    String gitRevParseCommand = "git <gitOptions> rev-parse <revParseOptions> ";
-    String revParseOptionAbbrevRef = " --abbrev-ref ";
+    String HEAD_COMMIT = "HEAD";
 
-    String gitCheckoutCommand = "git <gitOptions> checkout <checkoutOptions> ";
-    String checkoutOptionNewBranch = " -b ";
+    String GIT_OPTIONS_PLACEHOLDER = "<gitOptions>";
 
-    String gitBranchCommand = "git <gitOptions> branch <branchOptions> ";
-    String branchDeleteOption = " -D ";
-    String branchForceOption = " -f ";
+    String GIT_REV_LIST_COMMAND = "git <gitOptions> rev-list <revListOptions> ";
+    String REV_LIST_ALL_OPTION = " --all ";
 
-    String gitResetCommand = "git <gitOptions> reset <resetOptions> ";
-    String resetHardOption = " --hard ";
+    String GIT_REV_PARSE_COMMAND = "git <gitOptions> rev-parse <revParseOptions> ";
+    String REV_PARSE_OPTION_ABBREV_REF = " --abbrev-ref ";
 
-    String gitDiffCommand = "git <gitOptions> diff <diffOptions> <oldCommit> <oldFile> <newCommit> <newFileName>";
+    String GIT_CHECKOUT_COMMAND = "git <gitOptions> checkout <checkoutOptions> ";
+    String CHECKOUT_OPTION_NEW_BRANCH = " -b ";
 
-    String gitOptionNoPager = " --no-pager ";
-    String gitOptionPath = " -C ";
+    String GIT_BRANCH_COMMAND = "git <gitOptions> branch <branchOptions> ";
+    String BRANCH_DELETE_OPTION = " -D ";
+    String BRANCH_FORCE_OPTION = " -f ";
 
-    String diffOptionNameStatus = " --name-status ";
-    String diffOptionNoContext = " -U0 ";
-    String diffOptionFindCopies = " -C ";
-    String diffOptionFindCopiesHarder = " -C -C ";
+    String GIT_RESET_COMMAND = "git <gitOptions> reset <resetOptions> ";
+    String RESET_HARD_OPTION = " --hard ";
 
-    int nonExistentRowCol = 0,
-            killedRowCol = 1,
-            survivedRowCol = 2,
-            noCoverageRowCol = 3,
-            nonViableRowCol = 4,
-            timedOutRowCol = 5,
-            memoryErrorRowCol = 6,
-            runErrorRowCol = 7,
-            totalRowCol = 8,
-            pitMatrixSize = 9;
+    String GIT_DIFF_COMMAND = "git <gitOptions> diff <diffOptions> <oldCommit> <oldFile> <newCommit> <newFileName>";
 
-    String[] colHeading0 = {"New commit", "Old commit"};
-    String[] colHeading1 = {"N/E", "KLD", "SVD", "N/C", "N/V", "T/O", "M/E", "R/E", "Totals"};
-    String[] rowHeadings = {
+    String GIT_OPTION_NO_PAGER = " --no-pager ";
+    String GIT_OPTION_PATH = " -C ";
+
+    String DIFF_OPTION_NAME_STATUS = " --name-status ";
+    String DIFF_OPTION_NO_CONTEXT = " -U0 ";
+    String DIFF_OPTION_FIND_COPIES = " -C ";
+    String DIFF_OPTION_FIND_COPIES_HARDER = " -C -C ";
+
+    int ROW_COL_NON_EXISTENT = 0,
+            ROW_COL_KILLED = 1,
+            ROW_COL_SURVIVED = 2,
+            ROW_COL_NO_COVERAGE = 3,
+            ROW_COL_NON_VIABLE = 4,
+            ROW_COL_TIMED_OUT = 5,
+            ROW_COL_MEMORY_ERROR = 6,
+            ROW_COL_RUN_ERROR = 7,
+            ROW_COL_TOTAL = 8,
+            SIZE_PIT_MATRIX = 9;
+
+    String[] COL_HEADING_0 = {"New commit", "Old commit"};
+    String[] COL_HEADING_1 = {"N/E", "KLD", "SVD", "N/C", "N/V", "T/O", "M/E", "R/E", "Totals"};
+    String[] ROW_HEADINGS = {
             "Old    N/E  ",
             "commit KLD  ",
             "       SVD  ",
@@ -111,7 +115,35 @@ interface Worker {
             "       T/O  ",
             "       M/E  ",
             "       R/E  ",
-          "\nNew commit\n" +
-            "    Totals  "};
+            "\nNew commit\n" +
+                    "    Totals  "};
 
+
+    String DIFF_STATUS_ADDED = "A";
+    String DIFF_STATUS_DELETED = "D";
+    String DIFF_STATUS_MODIFIED = "M";
+    String DIFF_STATUS_COPIED = "C";
+    String DIFF_STATUS_RENAMED = "R";
+
+    String PIT_STATUS_KILLED = "KILLED";
+    String PIT_STATUS_SURVIVED = "SURVIVED";
+    String PIT_STATUS_NO_COVERAGE = "NO_COVERAGE";
+    String PIT_STATUS_NON_VIABLE = "NON_VIABLE";
+    String PIT_STATUS_TIMED_OUT = "TIMED_OUT";
+    String PIT_STATUS_MEMORY_ERROR = "MEMORY_ERROR";
+    String PIT_STATUS_RUN_ERROR = "RUN_ERROR";
+
+    String STATUS_ADDED = "ADDED";
+    String STATUS_CHANGED = "CHANGED";
+    String STATUS_DELETED = "DELETED";
+    String STATUS_DELETED_SHORT = "DEL";
+    String STATUS_EXISTING = "EXISTING";
+    String STATUS_NEW = "NEW";
+    String STATUS_NON_EXISTENT = "N/E";
+    String STATUS_REGRESSED = "REGRESSED";
+    String STATUS_REMOVED = "REMOVED";
+    String STATUS_UNCHANGED = "UNCHANGED";
+    String STATUS_UNKNOWN = "UNKNOWN";
+
+    String REGRESSION_NOTE = "NOTE! Potential code regression: mutation is no longer killed in the current commit.";
 }

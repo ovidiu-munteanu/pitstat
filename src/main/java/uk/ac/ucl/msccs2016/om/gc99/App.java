@@ -26,13 +26,12 @@ public class App {
         String endCommit = null;
         int maxRollbacks = 1;
 
-        boolean endCommitArg = false, rollbacksArg = false, beginingOfTime;
+        boolean endCommitArg = false, rollbacksArg = false;
 
+        boolean noHuman = false;
+        boolean noMachine = false;
+        boolean zipOutput = false;
         boolean shutdown = false;
-
-//        String projectPath = "D:/X/github/joda-time";
-//        String projectPath = "D:/X/projIdea/MavenTest";
-//        String projectPath = "D:/X/github/commons-collections";
 
         if (args.length == 0) {
             printHelp();
@@ -111,7 +110,8 @@ public class App {
                 case "-EC":
                 case "--end-commit":
                     if (rollbacksArg) {
-                        System.err.println("Cannot specify both end commit and rollbacks.\nPlease try again using only one of the two options.");
+                        System.err.println("Cannot specify both end commit and rollbacks.\n" +
+                                "Please try again using only one of the two options.");
                         systemExit(99);
                     }
                     try {
@@ -127,7 +127,8 @@ public class App {
                 case "-R":
                 case "--rollbacks":
                     if (endCommitArg) {
-                        System.err.println("Cannot specify both rollbacks and end commit.\nPlease try again using only one of the two options.");
+                        System.err.println("Cannot specify both rollbacks and end commit.\n" +
+                                "Please try again using only one of the two options.");
                         systemExit(99);
                     }
                     String rollbacksString = null;
@@ -150,6 +151,32 @@ public class App {
                         systemExit(6);
                     }
                     rollbacksArg = true;
+                    break;
+                case "-NH":
+                case "--no-human":
+                    if (noMachine) {
+                        System.err.println("Cannot specify both no human and no machine output.\n" +
+                                "Please try again using only one of the two options.");
+                        systemExit(99);
+                    }
+                    noHuman = true;
+                case "-NM":
+                case "--no-machine":
+                    if (noHuman) {
+                        System.err.println("Cannot specify both no machine and no human output.\n" +
+                                "Please try again using only one of the two options.");
+                        systemExit(99);
+                    }
+                    noMachine = true;
+                case "-Z":
+                case "--zip-output":
+                    if (noMachine){
+                        System.err.println("Cannot specify zip output with no machine readable output - " +
+                                "zip compression is available only for machine readable output.\n" +
+                                "Please try again using only one of the two options.");
+                        systemExit(99);
+                    }
+                    zipOutput = true;
                     break;
                 case "-NT":
                 case "--no-timestamp":
@@ -176,6 +203,9 @@ public class App {
                 pitStatReportsPath,
                 pitStatReportsPathRelative,
                 createTimestampFolder,
+                noHuman,
+                zipOutput,
+                noMachine,
                 startCommit,
                 endCommit,
                 maxRollbacks
