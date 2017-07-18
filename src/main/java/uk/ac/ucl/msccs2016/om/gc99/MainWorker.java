@@ -1,6 +1,10 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
-import org.apache.maven.shared.invoker.*;
+import org.apache.maven.shared.invoker.DefaultInvocationRequest;
+import org.apache.maven.shared.invoker.DefaultInvoker;
+import org.apache.maven.shared.invoker.InvocationRequest;
+import org.apache.maven.shared.invoker.InvocationResult;
+import org.apache.maven.shared.invoker.Invoker;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -25,7 +29,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -522,14 +534,7 @@ class MainWorker implements Worker {
         diffMachineOutputFileName = diffMachineOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
         diffMachineOutputFileName = diffMachineOutputFileName.replace(HASH_PLACEHOLDER, commitHash);
 
-        if (zipOutput) {
-            OutputStream outputStream = zipFileOutputStream(outputPath, diffMachineOutputFileName);
-            jsonHandler.saveDifToJSON(diffOutput, outputStream);
-        } else {
-            String diffOutputPath = Paths.get(outputPath, diffMachineOutputFileName).toString();
-            jsonHandler.saveDifToJSON(diffOutput, diffOutputPath);
-        }
-
+        saveMachineOutput(diffOutput, diffMachineOutputFileName);
     }
 
     private String formatDiffMapOutput(List<String> mapFileLines) {
@@ -690,8 +695,8 @@ class MainWorker implements Worker {
                     killingTest.testFile.fileName_old = changedFile.oldFileName;
                     killingTest.testFile.diffStatus = changedFile.diffStatus;
                 } else {
-                    killingTest.testFile.fileName_old = killingTest.testFile.fileName;
-                    killingTest.testFile.fileName = STATUS_UNCHANGED;
+//                    killingTest.testFile.fileName_old = killingTest.testFile.fileName;
+                    killingTest.testFile.diffStatus = STATUS_UNCHANGED;
                 }
 
                 killingTest.testFile.testMethod = killingTestElement.substring(0, killingTestElement.lastIndexOf("("));
@@ -740,13 +745,7 @@ class MainWorker implements Worker {
         pitOutputFileName = pitOutputFileName.replace(HASH_PLACEHOLDER,
                 currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash);
 
-        if (zipOutput) {
-            OutputStream outputStream = zipFileOutputStream(outputPath, pitOutputFileName);
-            jsonHandler.savePitToJSON(pitOutput, outputStream);
-        } else {
-            String pitOutputPath = Paths.get(outputPath, pitOutputFileName).toString();
-            jsonHandler.savePitToJSON(pitOutput, pitOutputPath);
-        }
+        saveMachineOutput(pitOutput, pitOutputFileName);
     }
 
 
@@ -792,26 +791,38 @@ class MainWorker implements Worker {
         matrixMachineOutputFileName = matrixMachineOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
         matrixMachineOutputFileName = matrixMachineOutputFileName.replace(HASH_PLACEHOLDER, commitHash);
 
+        saveMachineOutput(matrixOutput, matrixMachineOutputFileName);
+
+
+        if (changedMutations != null) {
+            String changesMachineOutputFileName = CHANGES_MACHINE_OUTPUT_BASE_FILE_NAME;
+            changesMachineOutputFileName = changesMachineOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
+            changesMachineOutputFileName = changesMachineOutputFileName.replace(HASH_PLACEHOLDER, commitHash);
+
+            saveMachineOutput(changedMutations, changesMachineOutputFileName);
+        }
+    }
+
+
+    private void saveMachineOutput(Object object, String filename) throws IOException {
         if (zipOutput) {
-            OutputStream outputStream = zipFileOutputStream(outputPath, matrixMachineOutputFileName);
-            jsonHandler.saveMatrixToJSON(matrixOutput, outputStream);
+            OutputStream outputStream = zipFileOutputStream(outputPath, filename);
+            jsonHandler.saveToJSON(object, outputStream);
         } else {
-            String matrixMachineOutputPath = Paths.get(outputPath, matrixMachineOutputFileName).toString();
-            jsonHandler.saveMatrixToJSON(matrixOutput, matrixMachineOutputPath);
+            String changesMachineOutputPath = Paths.get(outputPath, filename).toString();
+            jsonHandler.saveToJSON(object, changesMachineOutputPath);
         }
     }
 
 
     private int buildPitMatrix(String currentCommitHash, String parentCommitHash, int[][] pitMatrix) {
 
-        PitOutput currentCommitPitOutput = loadPitOutput(currentCommitHash);
-        PitOutput parentCommitPitOutput = loadPitOutput(parentCommitHash);
+        PitOutput currentCommitPitOutput = loadPitOutput(currentCommitHash, new PitOutput());
+        PitOutput parentCommitPitOutput = loadPitOutput(parentCommitHash, new PitOutput());
 
         if (currentCommitPitOutput == null || parentCommitPitOutput == null) return -1;
 
-        DiffOutput diffOutput = loadDiffOutput(currentCommitHash);
-
-        changedMutations = null;
+        DiffOutput diffOutput = loadDiffOutput(currentCommitHash, new DiffOutput());
 
         // First run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at
         // each of the mutations in the new commit against those in the old commit.
@@ -970,6 +981,8 @@ class MainWorker implements Worker {
                         // fully determined by the status of the mutation in the new commit
                         int matrixCol = getMatrixRowCol(newMutation.pitStatus);
 
+                        String oldMutatedMethodDescription =
+                                oldMutatedMethod == null ? null : oldMutatedMethod.description;
 
                         // BIG NOTE: This method is used for both runs, i.e. new commit vs old commit AND
                         // old commit vs new commit. However, the columns of the statistics matrix correspond
@@ -987,8 +1000,8 @@ class MainWorker implements Worker {
                             // additional details for further investigation
                             if (matrixRow != matrixCol)
                                 addChangedMutation(newCommitHash, oldCommitHash, matrixCol,
-                                        newFileName, newClassName, newMethodName, newMutatedFile, newMutation,
-                                        oldMutation, oldMutatedMethod);
+                                        newFileName, newClassName, newMethodName, newMutation.getClone(),
+                                        oldMutation, oldMutatedMethodDescription);
                         } else {
                             // if we are in the second run however, we are effectively looking at the transposed
                             // statistics matrix and therefore the meaning of the row and column variables is
@@ -997,8 +1010,8 @@ class MainWorker implements Worker {
 
                             if (matrixRow != matrixCol)
                                 addChangedMutation(newCommitHash, oldCommitHash, ROW_COL_NON_EXISTENT,
-                                        newFileName, newClassName, newMethodName, newMutatedFile, newMutation,
-                                        oldMutation, oldMutatedMethod);
+                                        newFileName, newClassName, newMethodName, newMutation.getClone(),
+                                        oldMutation, oldMutatedMethodDescription);
                         }
                     }
                     if (isCurrentCommit && oldMutatedMethod != null && oldMutatedMethod.mutations.size() == 0)
@@ -1015,8 +1028,8 @@ class MainWorker implements Worker {
 
     private void addChangedMutation(String newCommitHash, String oldCommitHash, int position,
                                     String newFileName, String newClassName, String newMethodName,
-                                    MutatedFile newMutatedFile, MutatedFile.Mutation newMutation,
-                                    MutatedFile.Mutation oldMutation, MutatedFile.MutatedMethod oldMutatedMethod) {
+                                    MutatedFile.Mutation changedMutation, MutatedFile.Mutation oldMutation,
+                                    String oldMutatedMethodDescription) {
 
         // the changed mutations list is build with respect to the current commit; as such, mutations that exist in the
         // current commit will be placed in the position corresponding to their status in the current commit, i.e.
@@ -1067,104 +1080,104 @@ class MainWorker implements Worker {
             isNewMutatedMethod = true;
         }
 
-        newMutation.mutationStatus = isCurrentCommit ?
+        changedMutation.mutationStatus = isCurrentCommit ?
                 (oldMutation == null ? STATUS_NEW : STATUS_EXISTING) :
                 // if we are not in the current commit (i.e. we are at the parent commit), then all the mutations we
                 // encounter were not found when looking at the current commit, meaning they were removed
                 STATUS_REMOVED;
 
-        if (newMutation.mutationStatus.equals(STATUS_EXISTING)) {
+        if (changedMutation.mutationStatus.equals(STATUS_EXISTING)) {
 
-            newMutation.detected_old = oldMutation.detected;
-            newMutation.pitStatus_old = oldMutation.pitStatus;
-            newMutation.lineNo_old = oldMutation.lineNo;
+            changedMutation.detected_old = oldMutation.detected;
+            changedMutation.pitStatus_old = oldMutation.pitStatus;
+            changedMutation.lineNo_old = oldMutation.lineNo;
 
             if (!oldMutation.pitStatus.equals(PIT_STATUS_KILLED)) {
 
-                if (newMutation.pitStatus.equals(PIT_STATUS_KILLED))
-                    newMutation.killingTest.testStatus = STATUS_NEW;
+                if (changedMutation.pitStatus.equals(PIT_STATUS_KILLED))
+                    changedMutation.killingTest.testStatus = STATUS_NEW;
 
             } else {
 
-                newMutation.killingTest.testFile_old = oldMutation.killingTest.testFile;
+                changedMutation.killingTest.testFile_old = oldMutation.killingTest.testFile;
 
-                if (newMutation.pitStatus.equals(PIT_STATUS_KILLED)) {
-                    String newTestFileName = newMutation.killingTest.testFile.fileName;
-                    String newTestMethod = newMutation.killingTest.testFile.testMethod;
+                if (changedMutation.pitStatus.equals(PIT_STATUS_KILLED)) {
+                    String newTestFileName = changedMutation.killingTest.testFile.fileName;
+                    String newTestMethod = changedMutation.killingTest.testFile.testMethod;
 
                     String oldTestFileName = oldMutation.killingTest.testFile.fileName;
                     String oldTestMethod = oldMutation.killingTest.testFile.testMethod;
 
-                    newMutation.killingTest.testStatus =
+                    changedMutation.killingTest.testStatus =
                             newTestFileName.equals(oldTestFileName) && newTestMethod.equals(oldTestMethod) ?
                                     STATUS_UNCHANGED : STATUS_CHANGED;
 
-                    newMutation.killingTest.testFileStatus =
+                    changedMutation.killingTest.testFileStatus =
                             newTestFileName.equals(oldTestFileName) ?
                                     STATUS_UNCHANGED : STATUS_CHANGED;
 
-                    newMutation.killingTest.testMethodStatus =
-                            newMutation.killingTest.testFileStatus.equals(STATUS_UNCHANGED) ?
+                    changedMutation.killingTest.testMethodStatus =
+                            changedMutation.killingTest.testFileStatus.equals(STATUS_UNCHANGED) ?
                                     (newTestMethod.equals(oldTestMethod) ? STATUS_UNCHANGED : STATUS_CHANGED)
                                     : STATUS_UNKNOWN;
                 } else {
-                    newMutation.killingTest = new MutatedFile.KillingTest();
-                    newMutation.killingTest.testStatus = STATUS_REGRESSED;
-                    newMutation.killingTest.regressionNote = REGRESSION_NOTE;
+                    changedMutation.killingTest = new MutatedFile.KillingTest();
+                    changedMutation.killingTest.testStatus = STATUS_REGRESSED;
+                    changedMutation.killingTest.regressionNote = REGRESSION_NOTE;
                 }
             }
         }
 
-        if (newMutation.mutationStatus.equals(STATUS_REMOVED)) {
+        if (changedMutation.mutationStatus.equals(STATUS_REMOVED)) {
 
-            newMutation.detected_old = newMutation.detected;
-            newMutation.pitStatus_old = newMutation.pitStatus;
-            newMutation.lineNo_old = newMutation.lineNo;
-            newMutation.mutator_old = newMutation.mutator;
-            newMutation.index_old = newMutation.index;
-            newMutation.description_old = newMutation.description;
+            changedMutation.detected_old = changedMutation.detected;
+            changedMutation.pitStatus_old = changedMutation.pitStatus;
+            changedMutation.lineNo_old = changedMutation.lineNo;
+            changedMutation.mutator_old = changedMutation.mutator;
+            changedMutation.index_old = changedMutation.index;
+            changedMutation.description_old = changedMutation.description;
 
-            newMutation.detected = null;
-            newMutation.pitStatus = null;
-            newMutation.lineNo = null;
-            newMutation.lineDiffStatus = null;
-            newMutation.mutator = null;
-            newMutation.index = null;
-            newMutation.description = null;
+            changedMutation.detected = null;
+            changedMutation.pitStatus = null;
+            changedMutation.lineNo = null;
+            changedMutation.lineDiffStatus = null;
+            changedMutation.mutator = null;
+            changedMutation.index = null;
+            changedMutation.description = null;
 
-            if (newMutation.killingTest != null) {
-                newMutation.killingTest.testStatus_old = newMutation.killingTest.testStatus;
-                newMutation.killingTest.testFileStatus_old = newMutation.killingTest.testFileStatus;
-                newMutation.killingTest.testMethodStatus_old = newMutation.killingTest.testMethodStatus;
-                newMutation.killingTest.testFile_old = newMutation.killingTest.testFile;
+            if (changedMutation.killingTest != null) {
+                changedMutation.killingTest.testStatus_old = changedMutation.killingTest.testStatus;
+                changedMutation.killingTest.testFileStatus_old = changedMutation.killingTest.testFileStatus;
+                changedMutation.killingTest.testMethodStatus_old = changedMutation.killingTest.testMethodStatus;
+                changedMutation.killingTest.testFile_old = changedMutation.killingTest.testFile;
 
-                newMutation.killingTest.testStatus = null;
-                newMutation.killingTest.testFileStatus = null;
-                newMutation.killingTest.testMethodStatus = null;
-                newMutation.killingTest.testFile = null;
+                changedMutation.killingTest.testStatus = null;
+                changedMutation.killingTest.testFileStatus = null;
+                changedMutation.killingTest.testMethodStatus = null;
+                changedMutation.killingTest.testFile = null;
             }
         }
 
 
-        mutatedMethod.mutations.add(newMutation);
+        mutatedMethod.mutations.add(changedMutation);
 
 
         if (isCurrentCommit) {
-            if (oldMutatedMethod != null)
-                mutatedMethod.description_old = oldMutatedMethod.description;
+            if (oldMutatedMethodDescription != null)
+                mutatedMethod.description_old = oldMutatedMethodDescription;
         } else {
-            if (oldMutatedMethod == null) {
+            if (oldMutatedMethodDescription == null) {
                 mutatedMethod.description_old = mutatedMethod.description;
                 mutatedMethod.description = null;
             } else {
-                mutatedMethod.description = oldMutatedMethod.description;
-                mutatedMethod.description_old = oldMutatedMethod.description_old;
+                mutatedMethod.description = oldMutatedMethodDescription;
+                mutatedMethod.description_old = oldMutatedMethodDescription;
             }
         }
 
         if (isNewMutatedMethod) mutatedClass.mutatedMethods.put(newMethodName, mutatedMethod);
         if (isNewMutatedClass) mutatedFile.mutatedClasses.put(newClassName, mutatedClass);
-        if (isNewMutatedFile) mutatedFiles.put(newFileName, newMutatedFile);
+        if (isNewMutatedFile) mutatedFiles.put(newFileName, mutatedFile);
 
     }
 
@@ -1264,45 +1277,31 @@ class MainWorker implements Worker {
     }
 
 
-    private DiffOutput loadDiffOutput(String commitHash) {
-        return (DiffOutput) loadOutput(commitHash, TYPE_DIFF_MACHINE_OUTPUT);
+    private DiffOutput loadDiffOutput(String commitHash, Object o) {
+        return (DiffOutput) loadOutput(commitHash, TYPE_DIFF_MACHINE_OUTPUT, o);
+    }
+
+    private MatrixOutput loadMatrixOutput(String commitHash, Object o) {
+        return (MatrixOutput) loadOutput(commitHash, TYPE_MATRIX_MACHINE_OUTPUT, o);
+    }
+
+    private PitOutput loadPitOutput(String commitHash, Object o) {
+        return (PitOutput) loadOutput(commitHash, TYPE_PIT_MACHINE_OUTPUT, o);
     }
 
 
-    private MatrixOutput loadMatrixOutput(String commitHash) {
-        return (MatrixOutput) loadOutput(commitHash, TYPE_MATRIX_MACHINE_OUTPUT);
-    }
-
-
-    private PitOutput loadPitOutput(String commitHash) {
-        return (PitOutput) loadOutput(commitHash, TYPE_PIT_MACHINE_OUTPUT);
-    }
-
-
-    private Object loadOutput(String commitHash, String outputType) {
+    private Object loadOutput(String commitHash, String outputType, Object o) {
         String outputFileName = getOutputFileName(commitHash, outputType, outputPath);
         boolean isZipFile = getExtension(outputFileName).equals(ZIP_EXTENSION);
         try {
-            switch (outputType) {
-                case TYPE_DIFF_MACHINE_OUTPUT:
-                    return isZipFile ?
-                            jsonHandler.loadDifFromJSON(zipFileInputStream(outputFileName)) :
-                            jsonHandler.loadDifFromJSON(outputFileName);
-                case TYPE_MATRIX_MACHINE_OUTPUT:
-                    return isZipFile ?
-                            jsonHandler.loadMatrixFromJSON(zipFileInputStream(outputFileName)) :
-                            jsonHandler.loadMatrixFromJSON(outputFileName);
-                case TYPE_PIT_MACHINE_OUTPUT:
-                    return isZipFile ?
-                            jsonHandler.loadPitFromJSON(zipFileInputStream(outputFileName)) :
-                            jsonHandler.loadPitFromJSON(outputFileName);
-            }
+            return isZipFile ?
+                    jsonHandler.loadFromJSON(zipFileInputStream(outputFileName), o) :
+                    jsonHandler.loadFromJSON(outputFileName, o);
         } catch (Exception e) {
             System.err.println("The " + outputType + " output file for commit " + commitHash + " could not be loaded.");
         }
         return null;
     }
-
 
     private OutputStream zipFileOutputStream(String rootPath, String sourceFile) throws IOException {
         String zipFile = sourceFile.replace(getExtension(sourceFile), ZIP_EXTENSION);

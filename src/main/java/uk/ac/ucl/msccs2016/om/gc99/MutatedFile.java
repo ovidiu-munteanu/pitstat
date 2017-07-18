@@ -10,8 +10,16 @@ class MutatedFile {
     String fileDiffStatus;
     HashMap<String, MutatedClass> mutatedClasses;
 
+    MutatedFile(){
+        mutatedClasses = new HashMap<>();
+    }
+
     static class MutatedClass {
         HashMap<String, MutatedMethod> mutatedMethods;
+
+        MutatedClass(){
+            mutatedMethods = new HashMap<>();
+        }
     }
 
     static class MutatedMethod {
@@ -30,10 +38,14 @@ class MutatedFile {
         String pitStatus, pitStatus_old;
         Integer lineNo, lineNo_old;
         String lineDiffStatus;
-        String mutator, mutator_old;
         Integer index, index_old;
-        KillingTest killingTest;
+        String mutator, mutator_old;
         String description, description_old;
+        KillingTest killingTest;
+
+        Mutation getClone() {
+            return (Mutation) JSONHandler.cloneObject(this);
+        }
     }
 
     static class KillingTest {

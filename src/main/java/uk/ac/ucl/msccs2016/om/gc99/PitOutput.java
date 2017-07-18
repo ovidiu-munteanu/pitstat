@@ -6,6 +6,9 @@ class PitOutput {
     String commitHash;
     HashMap<String, MutatedFile> mutatedFiles;
 
+    PitOutput() {
+    }
+
     PitOutput(String commitHash, HashMap<String, MutatedFile> mutatedFiles) {
         this.commitHash = commitHash;
         this.mutatedFiles = mutatedFiles;
