@@ -1,15 +1,5 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
-import org.apache.commons.lang3.SystemUtils;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.InvalidParameterException;
 
 public class App {
@@ -26,6 +16,7 @@ public class App {
         String endCommit = null;
         int maxRollbacks = 1;
         int threadsNo = 1;
+        int shutdownTimeout = 1;
 
         boolean endCommitArg = false, rollbacksArg = false;
 
@@ -53,10 +44,10 @@ public class App {
                         System.err.println("No project path specified.");
                         systemExit(99);
                     }
-                    switch (projectExists(projectPath)) {
+                    switch (Utils.projectExists(projectPath)) {
                         case 1:
                             System.err.println("Cannot access the specified project directory: " + projectPath);
-                            if (SystemUtils.IS_OS_WINDOWS)
+                            if (OS.IS_WINDOWS)
                                 System.out.println("Tip: in Windows you need to write the path between inverted commas or use \"/\" instead of \"\\\"");
                             systemExit(1);
                         case 2:
@@ -78,10 +69,10 @@ public class App {
                         System.err.println("No reports path specified.");
                         systemExit(99);
                     }
-                    switch (reportsPathOK(pitStatReportsPath)) {
+                    switch (Utils.reportsPathOK(pitStatReportsPath)) {
                         case 1:
                             System.err.println("Cannot access the specified reports directory: " + projectPath);
-                            if (SystemUtils.IS_OS_WINDOWS)
+                            if (OS.IS_WINDOWS)
                                 System.out.println("Tip: in Windows you need to write the path between inverted commas or use \"/\" instead of \"\\\"");
                             systemExit(1);
                         case 2:
@@ -174,6 +165,7 @@ public class App {
                         systemExit(99);
                     }
                     noHuman = true;
+                    break;
                 case "-NM":
                 case "--no-machine":
                     if (noHuman) {
@@ -182,14 +174,9 @@ public class App {
                         systemExit(99);
                     }
                     noMachine = true;
+                    break;
                 case "-Z":
                 case "--zip-output":
-                    if (noMachine) {
-                        System.err.println("Cannot specify zip output with no machine readable output - " +
-                                "zip compression is available only for machine readable output.\n" +
-                                "Please try again using only one of the two options.");
-                        systemExit(99);
-                    }
                     zipOutput = true;
                     break;
                 case "-NT":
@@ -199,6 +186,28 @@ public class App {
                 case "-S":
                 case "--shutdown":
                     shutdown = true;
+                    try {
+                        String timeoutString = args[++i];
+                        float timeout = Float.valueOf(timeoutString);
+                        shutdownTimeout = (int) timeout;
+                        if (shutdownTimeout < 1)
+                            throw new InvalidParameterException("<1");
+                        else if (timeout - shutdownTimeout != 0)
+                            throw new InvalidParameterException();
+                    } catch (ArrayIndexOutOfBoundsException e) {
+                        // that's ok, the timeout value is optional
+                    } catch (NumberFormatException e) {
+                        // we'll assume that the timeout value was omitted and we got to the next argument;
+                        // we then need to roll back one position in the arguments array
+                        i--;
+                    } catch (InvalidParameterException e) {
+                        System.err.print("Invalid timeout value. ");
+                        if (e.getMessage().equals("<1"))
+                            System.err.println("Cannot be less than 1 minute.");
+                        else
+                            System.err.println("The timeout value should be expressed in whole minutes.");
+                        systemExit(6);
+                    }
                     break;
                 case "-H":
                 case "--help":
@@ -235,116 +244,31 @@ public class App {
         if (worker.validStartEndCommits()) worker.doWork();
 
         // shutdown in 1 minute
-        if (shutdown) Runtime.getRuntime().exec(systemShutdownCommand(1));
+        if (shutdown) Runtime.getRuntime().exec(Utils.systemShutdownCommand(shutdownTimeout));
         System.exit(0);
-
     }
+
 
     private static void printHelp() {
-        System.out.print(getResourceFileAsString("help.txt"));
+        System.out.print(Utils.getResourceFileAsString("help.txt"));
     }
 
-    private static int projectExists(String projPath) {
-        File projDir = new File(projPath);
-        if (!projDir.canRead()) return 1;
-        if (!projDir.isDirectory()) return 2;
-
-        File projPom = new File(Paths.get(projPath, "pom.xml").toString());
-        if (!projPom.canRead() || !projPom.isFile()) return 3;
-
-        if (!canWriteInDirectory(projPath)) return 4;
-
-        return 0;
-    }
-
-    private static int reportsPathOK(String reportsPath) {
-        File repPath = new File(reportsPath);
-        if (!repPath.canRead()) return 1;
-        if (!repPath.isDirectory()) return 2;
-        if (!canWriteInDirectory(reportsPath)) return 4;
-        return 0;
-    }
-
-    private static boolean canWriteInDirectory(String directory) {
-        try {
-            Path testPath = Files.createTempFile(Paths.get(directory), "", "");
-            File testFile = new File(testPath.toString());
-            testFile.delete();
-        } catch (IOException e) {
-            return false;
-        }
-        return true;
-    }
 
     private static void checkCommitLength(String commit) {
         if (commit.length() < 4) {
-            System.err.println("The commit reference you entered is too short.\nTip: a commit reference is at least 4 characters long, e.g. HEAD");
+            System.err.println("The commit reference you entered is too short." +
+                    "\nTip: a commit reference is at least 4 characters long, e.g. HEAD");
             systemExit(99);
         } else if (commit.length() > 40) {
-            System.err.println("The commit reference you entered is too long.\nTip: a full commit hash is 40 characters long");
+            System.err.println("The commit reference you entered is too long." +
+                    "\nTip: a full commit hash is 40 characters long");
             systemExit(99);
         }
     }
 
-    private static String getResourceFileAsString(String resourceFile) {
-        BufferedReader bufferedReader = null;
-        StringBuilder stringBuilder = new StringBuilder();
-
-        InputStream inputStream = App.class.getClassLoader().getResourceAsStream(resourceFile);
-
-        try {
-            bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-            String inputLine = bufferedReader.readLine();
-            if (inputLine != null)
-                do {
-                    stringBuilder.append(inputLine);
-                    inputLine = bufferedReader.readLine();
-                    if (inputLine == null) break;
-                    stringBuilder.append("\n");
-                } while (true);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            if (bufferedReader != null)
-                try {
-                    bufferedReader.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-        }
-
-        return stringBuilder.toString();
-    }
 
     static void systemExit(int exitCode) {
         System.out.println();
         System.exit(exitCode);
     }
-
-
-    private static String systemShutdownCommand(int timeout) {
-        String shutdownCommand = null;
-
-        if (SystemUtils.IS_OS_AIX)
-            shutdownCommand = "shutdown -Fh " + timeout;
-        else if (SystemUtils.IS_OS_FREE_BSD ||
-                SystemUtils.IS_OS_LINUX ||
-                SystemUtils.IS_OS_MAC ||
-                SystemUtils.IS_OS_MAC_OSX ||
-                SystemUtils.IS_OS_NET_BSD ||
-                SystemUtils.IS_OS_OPEN_BSD)
-            shutdownCommand = "shutdown -h " + timeout;
-        else if (SystemUtils.IS_OS_HP_UX)
-            shutdownCommand = "shutdown -hy " + timeout;
-        else if (SystemUtils.IS_OS_IRIX)
-            shutdownCommand = "shutdown -y -g " + timeout;
-        else if (SystemUtils.IS_OS_SOLARIS ||
-                SystemUtils.IS_OS_SUN_OS)
-            shutdownCommand = "shutdown -y -i5 -g" + timeout;
-        else if (SystemUtils.IS_OS_WINDOWS)
-            shutdownCommand = "shutdown -s -t " + (timeout * 60);
-
-        return shutdownCommand;
-    }
-
 }

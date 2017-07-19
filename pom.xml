@@ -7,20 +7,6 @@
     <version>1.0-SNAPSHOT</version>
     <build>
         <plugins>
-            <!--
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.0.2</version>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>uk.ac.ucl.msccs2016.om.gc99.App</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>
-            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>
@@ -49,13 +35,6 @@
                 <artifactId>maven-resources-plugin</artifactId>
                 <version>3.0.2</version>
             </plugin>
-            <!--
-            <plugin>
-                <groupId>org.pitest</groupId>
-                <artifactId>pitest-maven</artifactId>
-                <version>1.2.0</version>
-            </plugin>
-            -->
         </plugins>
     </build>
     <packaging>jar</packaging>
@@ -79,19 +58,6 @@
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
             <version>2.8.1</version>
-        </dependency>
-        <!--
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
-            <scope>test</scope>
-        </dependency>
-        -->
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>3.6</version>
         </dependency>
     </dependencies>
 </project>

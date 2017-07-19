@@ -4,8 +4,7 @@ import java.util.HashMap;
 
 class ChangedMutations {
 
-    String currentCommitHash;
-    String parentCommitHash;
+    String currentCommitHash, parentCommitHash;
 
     HashMap<String, MutatedFile> removedMutations;
     HashMap<String, MutatedFile> killedMutations;
@@ -15,7 +14,6 @@ class ChangedMutations {
     HashMap<String, MutatedFile> timedOutMutations;
     HashMap<String, MutatedFile> memoryErrorMutations;
     HashMap<String, MutatedFile> runErrorMutations;
-
 
     ChangedMutations(String currentCommitHash, String parentCommitHash){
         this.currentCommitHash = currentCommitHash;

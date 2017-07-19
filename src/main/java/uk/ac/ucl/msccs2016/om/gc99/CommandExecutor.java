@@ -7,8 +7,7 @@ import java.util.List;
 class CommandExecutor {
     private List<String> splitCommand;
     private boolean printCommand;
-    private ThreadedStreamHandler inputStreamHandler;
-    private ThreadedStreamHandler errorStreamHandler;
+    private ThreadedStreamHandler inputStreamHandler, errorStreamHandler;
 
     CommandExecutor() {
         this.splitCommand = null;

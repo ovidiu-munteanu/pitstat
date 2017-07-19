@@ -18,11 +18,8 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
-import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,16 +28,14 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
+
+import static uk.ac.ucl.msccs2016.om.gc99.Utils.getNameOnly;
+import static uk.ac.ucl.msccs2016.om.gc99.Utils.paddingSpaces;
 
 
 class MainWorker implements Worker {
@@ -49,30 +44,28 @@ class MainWorker implements Worker {
     private final Invoker mavenInvoker;
     private final InvocationRequest invocationRequest;
     private final JSONHandler jsonHandler;
-
     private final DocumentBuilder documentBuilder;
 
+    private final String projectPath;
+    private final String pitStatReportsPath;
+    private final boolean pitStatReportsPathRelative;
+    private final boolean createTimestampDirectory;
+    private final boolean humanOutput;
+    private final boolean zipOutput;
+    private final boolean machineOutput;
+    private final String startCommit;
+    private final String endCommit;
+    private final int threadsNo;
 
-    private String projectPath;
-    private String pitStatReportsPath;
-    private boolean pitStatReportsPathRelative;
-    private boolean createTimestampDirectory;
-    private boolean humanOutput;
-    private boolean zipOutput;
-    private boolean machineOutput;
-    private String startCommit;
-    private String endCommit;
     private int maxRollbacks;
-    private int threadsNo;
+
 
     private List<String> commitsHashList;
-
     private String startCommitHash;
     private String endCommitHash;
     private int indexOfStartCommit;
 
     private String originalGitBranch;
-    private String pitStatBranch;
 
     private String childCommitHash;
     private String currentCommitHash;
@@ -88,6 +81,9 @@ class MainWorker implements Worker {
     private boolean isEndCommit;
     private HashMap<String, ChangedFile> changedFiles;
     private ChangedMutations changedMutations;
+
+    private PitOutput childPitOutput, currentPitOutput;
+    private DiffOutput childDiffOutput, currentDiffOutput;
 
 
     MainWorker(String projectPath,
@@ -113,7 +109,7 @@ class MainWorker implements Worker {
             mavenInvoker.setMavenHome(new File(mavenHome));
         } else {
             System.err.println("Maven home environment variable not set.");
-            System.out.println("Tip: the M2_HOME environment variable needs to point to the path of your maven installation");
+            System.out.println("Tip: the M2_HOME environment variable needs to point to the path of your maven installation.");
             App.systemExit(98);
         }
 
@@ -141,10 +137,11 @@ class MainWorker implements Worker {
 
     boolean validStartEndCommits() {
 
-        originalGitBranch = getGitBranch(HEAD_COMMIT);
-        commitsHashList = getCommitsHashList();
+        originalGitBranch = GitUtils.getGitBranch(HEAD_COMMIT, projectPath, commandExecutor);
+        commitsHashList = GitUtils.getCommitsHashList(projectPath, commandExecutor);
 
-        startCommitHash = parseCommit(startCommit);
+        startCommitHash = GitUtils.parseCommit(startCommit, originalGitBranch,
+                commitsHashList, projectPath, commandExecutor);
         indexOfStartCommit = (startCommit.equals("") ? -1 : commitsHashList.indexOf(startCommitHash));
 
         if (maxRollbacks > 0 && endCommit == null) {
@@ -165,7 +162,8 @@ class MainWorker implements Worker {
             if (endCommit.equals("initial-commit")) {
                 endCommitHash = commitsHashList.get(commitsHashList.size() - 1);
             } else {
-                endCommitHash = parseCommit(endCommit);
+                endCommitHash = GitUtils.parseCommit(endCommit, originalGitBranch,
+                        commitsHashList, projectPath, commandExecutor);
             }
 
             maxRollbacks = commitsHashList.indexOf(endCommitHash) - indexOfStartCommit;
@@ -184,15 +182,17 @@ class MainWorker implements Worker {
     void doWork() throws Exception {
 
         if (pitStatReportsPathRelative || createTimestampDirectory) {
-            outputPath = createOutputDirectory();
+            outputPath = Utils.createOutputDirectory(
+                    pitStatReportsPath, pitStatReportsPathRelative,
+                    startTime, createTimestampDirectory, projectPath);
             if (outputPath == null) App.systemExit(98);
         } else {
             outputPath = pitStatReportsPath;
         }
 
-        pitStatBranch = checkoutPitStatBranch();
+        String pitStatBranch = GitUtils.checkoutPitStatBranch(startTime, projectPath, commandExecutor);
 
-        if (indexOfStartCommit > 0) rollBackTo(startCommitHash);
+        if (indexOfStartCommit > 0) GitUtils.rollBackTo(startCommitHash, projectPath, commandExecutor);
 
         int currentCommitIndex = indexOfStartCommit;
         int parentCommitIndex = currentCommitIndex + 1;
@@ -216,7 +216,8 @@ class MainWorker implements Worker {
             isEndCommit = currentCommitHash.equals(endCommitHash);
 
             if (isEndCommit) {
-                System.out.println("Currently at end commit for this run (" + currentCommitHash + ") -> skipping git diff\n");
+                System.out.println("Currently at end commit for this run (" +
+                        currentCommitHash + ") -> skipping git diff\n");
             } else {
                 diffHumanOutput = new StringBuilder();
                 diffHumanOutput.append(currentCommitOutput);
@@ -225,7 +226,7 @@ class MainWorker implements Worker {
                 runGitDiff();
             }
 
-            List<String> oldTempFiles = listTempFiles();
+            List<String> oldTempFiles = Utils.listTempFiles();
 
             Thread thread = new Thread(() -> {
                 try {
@@ -238,7 +239,7 @@ class MainWorker implements Worker {
             thread.start();
             thread.join();
 
-            deleteNewTempFiles(oldTempFiles);
+            Utils.deleteNewTempFiles(oldTempFiles);
 
             if (childCommitHash != null) runPitMatrixAnalysis();
 
@@ -247,21 +248,24 @@ class MainWorker implements Worker {
                 currentCommitHash = commitsHashList.get(++currentCommitIndex);
                 parentCommitHash = ++parentCommitIndex == commitsHashList.size() ?
                         "currently at initial commit -> no parent hash" : commitsHashList.get(parentCommitIndex);
-                rollBackTo(currentCommitHash);
+                GitUtils.rollBackTo(currentCommitHash, projectPath, commandExecutor);
+
+                childDiffOutput = currentDiffOutput;
+                childPitOutput = currentPitOutput;
             }
 
         } while (!isEndCommit && currentRollback <= maxRollbacks);
 
-        checkoutOriginalBranch();
-        deletePitStatBranch();
-
+        GitUtils.checkoutOriginalBranch(originalGitBranch, projectPath, commandExecutor);
+        GitUtils.deletePitStatBranch(pitStatBranch, projectPath, commandExecutor);
     }
 
 
     private void runGitDiff() throws IOException {
 
         // git diff name-status between previous and current commit
-        List<String> nameStatusList = gitDiffNameStatus();
+        List<String> nameStatusList =
+                GitUtils.gitDiffNameStatus(currentCommitHash, parentCommitHash, projectPath, commandExecutor);
 
         int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
         changedFiles = new HashMap<>(hashMapCapacity);
@@ -324,7 +328,7 @@ class MainWorker implements Worker {
                 if (newFile == null && !diffStatus.equals(DIFF_STATUS_DELETED)) newFile = changedFile;
                 if (diffStatus.equals(DIFF_STATUS_ADDED)) changedFile = null;
 
-                List<LineOfCode> mergedLines = null;
+                List<ChangedFile.LineOfCode> mergedLines = null;
                 List<Integer> newLinesMap = null, oldLinesMap = null;
 
                 if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED + DIFF_STATUS_DELETED).contains(diffStatus)) {
@@ -341,7 +345,9 @@ class MainWorker implements Worker {
                     int mapFileLinePointer = 1;
 
                     // git diff between previous and current version of the specific file
-                    List<String> diffOutputLines = gitDiff(changedFile, newFile);
+                    List<String> diffOutputLines =
+                            GitUtils.gitDiff(changedFile, newFile,
+                                    currentCommitHash, parentCommitHash, projectPath, commandExecutor);
 
                     ListIterator<String> diffOutputIterator = diffOutputLines.listIterator();
 
@@ -351,7 +357,8 @@ class MainWorker implements Worker {
                     // If the file was copied or renamed but not modified (100% similarity) then the while loop above
                     // will have reached the end of the diff output so we need to continue with the next changed file
                     if (!diffOutputIterator.hasNext()) {
-                        ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines, newLinesMap, oldLinesMap);
+                        ChangedFile changedFileEntry =
+                                new ChangedFile(newFile, changedFile, diffStatus, mergedLines, newLinesMap, oldLinesMap);
                         changedFiles.put(changedFile, changedFileEntry);
                         continue;
                     }
@@ -414,13 +421,16 @@ class MainWorker implements Worker {
                                 while (mapFileLinePointer < actualNewPointer) {
 
                                     String unchangedLine = mapFileLines.get(mapFileLinePointer);
-                                    LineOfCode lineOfCode = new LineOfCode(unchangedLine, STATUS_UNCHANGED, newFileLinePointer, oldFileLinePointer);
+                                    ChangedFile.LineOfCode lineOfCode =
+                                            new ChangedFile.LineOfCode(unchangedLine, STATUS_UNCHANGED,
+                                                    newFileLinePointer, oldFileLinePointer);
 
                                     mergedLines.add(lineOfCode);
                                     newLinesMap.add(mapFileLinePointer);
                                     oldLinesMap.add(mapFileLinePointer);
 
-                                    String numberedLine = oldFileLinePointer + ":" + newFileLinePointer + ": " + unchangedLine;
+                                    String numberedLine =
+                                            oldFileLinePointer + ":" + newFileLinePointer + ": " + unchangedLine;
                                     mapFileLines.set(mapFileLinePointer, numberedLine);
 
                                     newFileLinePointer++;
@@ -433,7 +443,8 @@ class MainWorker implements Worker {
                         } else if (diffLine.startsWith("-")) {
 
                             String oldLine = diffLine.substring(1);
-                            LineOfCode lineOfCode = new LineOfCode(oldLine, STATUS_DELETED, 0, oldFileLinePointer);
+                            ChangedFile.LineOfCode lineOfCode =
+                                    new ChangedFile.LineOfCode(oldLine, STATUS_DELETED, 0, oldFileLinePointer);
 
                             mergedLines.add(lineOfCode);
                             oldLinesMap.add(mapFileLinePointer);
@@ -448,7 +459,8 @@ class MainWorker implements Worker {
                         } else if (diffLine.startsWith("+")) {
 
                             String newLine = diffLine.substring(1);
-                            LineOfCode lineOfCode = new LineOfCode(newLine, STATUS_ADDED, newFileLinePointer, 0);
+                            ChangedFile.LineOfCode lineOfCode =
+                                    new ChangedFile.LineOfCode(newLine, STATUS_ADDED, newFileLinePointer, 0);
 
                             mergedLines.add(lineOfCode);
                             newLinesMap.add(mapFileLinePointer);
@@ -471,7 +483,9 @@ class MainWorker implements Worker {
                     while (mapFileIterator.hasNext()) {
 
                         String unchangedLine = mapFileIterator.next();
-                        LineOfCode lineOfCode = new LineOfCode(unchangedLine, STATUS_UNCHANGED, newFileLinePointer, oldFileLinePointer);
+                        ChangedFile.LineOfCode lineOfCode =
+                                new ChangedFile.LineOfCode(unchangedLine, STATUS_UNCHANGED,
+                                        newFileLinePointer, oldFileLinePointer);
 
                         mergedLines.add(lineOfCode);
                         newLinesMap.add(mapFileLinePointer);
@@ -487,7 +501,9 @@ class MainWorker implements Worker {
 
                     String mapFileLinesOutput = formatDiffMapOutput(mapFileLines);
 
-                    diffHumanOutput.append(mapFileLinesOutput.replaceAll("(\\\u001B\\[0m)|(\\\u001B\\[31m)|(\\\u001B\\[32m)", ""));
+                    diffHumanOutput.append(mapFileLinesOutput.replaceAll(
+                            "(\\\u001B\\[0m)|(\\\u001B\\[31m)|(\\\u001B\\[32m)",
+                            ""));
                     System.out.print(mapFileLinesOutput);
 
                 } else {
@@ -497,7 +513,8 @@ class MainWorker implements Worker {
                     // copied or renamed
                 }
 
-                ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines, newLinesMap, oldLinesMap);
+                ChangedFile changedFileEntry =
+                        new ChangedFile(newFile, changedFile, diffStatus, mergedLines, newLinesMap, oldLinesMap);
 
                 if (!diffStatus.equals(DIFF_STATUS_DELETED)) {
                     changedFiles.put(newFile, changedFileEntry);
@@ -530,14 +547,17 @@ class MainWorker implements Worker {
             }
         }
 
-        // Write git diff machine readable output file
-        DiffOutput diffOutput = new DiffOutput(parentCommitHash, currentCommitHash, changedFiles);
+        currentDiffOutput = new DiffOutput(parentCommitHash, currentCommitHash, changedFiles);
 
-        String diffMachineOutputFileName = DIFF_MACHINE_OUTPUT_BASE_FILE_NAME;
-        diffMachineOutputFileName = diffMachineOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
-        diffMachineOutputFileName = diffMachineOutputFileName.replace(HASH_PLACEHOLDER, commitHash);
+        //noinspection Duplicates
+        if (machineOutput) {
+            // Write git diff machine readable output file
+            String diffMachineOutputFileName = DIFF_MACHINE_OUTPUT_BASE_FILE_NAME;
+            diffMachineOutputFileName = diffMachineOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
+            diffMachineOutputFileName = diffMachineOutputFileName.replace(HASH_PLACEHOLDER, commitHash);
 
-        saveMachineOutput(diffOutput, diffMachineOutputFileName);
+            Utils.saveMachineOutput(currentDiffOutput, diffMachineOutputFileName, outputPath, zipOutput, jsonHandler);
+        }
     }
 
     private String formatDiffMapOutput(List<String> mapFileLines) {
@@ -549,7 +569,7 @@ class MainWorker implements Worker {
         int digitsNo = Math.max(4, 1 + Integer.toString(mapFileLines.size()).length());
         String format = "%-" + digitsNo + "d";
 
-        String paddingSpaces = this.paddingSpaces(digitsNo - 3);
+        String paddingSpaces = paddingSpaces(digitsNo - 3);
 
         stringBuilder.append("Mapping of line changes:\n");
         stringBuilder.append("MAP" + paddingSpaces + ": NEW" + paddingSpaces + ": OLD" + paddingSpaces + "\n");
@@ -592,7 +612,6 @@ class MainWorker implements Worker {
     }
 
 
-    @SuppressWarnings("unchecked")
     private void runPitMutationTesting() throws Exception {
 
         File tempPom = createTempPom(projectPath, POM_FILE);
@@ -677,14 +696,14 @@ class MainWorker implements Worker {
             }
 
             MutatedFile.Mutation mutation = new MutatedFile.Mutation();
-            mutation.detected = detectedAttribute;
-            mutation.pitStatus = statusAttribute;
-            mutation.lineNo = lineNumberElement;
-            mutation.mutator = mutatorElement;
-            mutation.index = indexElement;
-            mutation.description = descriptionElement;
+            mutation.currentCommitData.detected = detectedAttribute;
+            mutation.currentCommitData.pitStatus = statusAttribute;
+            mutation.currentCommitData.lineNo = lineNumberElement;
+            mutation.currentCommitData.mutator = mutatorElement;
+            mutation.currentCommitData.index = indexElement;
+            mutation.currentCommitData.description = descriptionElement;
 
-            if (mutation.detected && killingTestElement.length() > 0) {
+            if (mutation.currentCommitData.detected && killingTestElement.length() > 0) {
                 MutatedFile.KillingTest killingTest = new MutatedFile.KillingTest(true);
 
                 killingTest.testFile.fileName = MAVEN_JAVA_TEST_SRC_PATH + "/" +
@@ -704,7 +723,7 @@ class MainWorker implements Worker {
 
                 killingTest.testFile.testMethod = killingTestElement.substring(0, killingTestElement.lastIndexOf("("));
 
-                mutation.killingTest = killingTest;
+                mutation.currentCommitData.killingTest = killingTest;
             }
 
 
@@ -714,11 +733,9 @@ class MainWorker implements Worker {
                 } else if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED).contains(mutatedFile.diffStatus)) {
                     mutation.lineDiffStatus = STATUS_NEW;
                 } else if ((DIFF_STATUS_MODIFIED + DIFF_STATUS_RENAMED).contains(mutatedFile.diffStatus)) {
-
-                    int mapLineNo = changedFiles.get(mutatedFileName).newLinesMap.get(mutation.lineNo);
-
-                    mutation.lineDiffStatus = changedFiles.get(mutatedFileName).mergedLines.get(mapLineNo).diffStatus;
-
+                    ChangedFile changedFile = changedFiles.get(mutatedFileName);
+                    int mapLineNo = changedFile.newLinesMap.get(mutation.currentCommitData.lineNo);
+                    mutation.lineDiffStatus = changedFile.mergedLines.get(mapLineNo).diffStatus;
                 } else {
                     // unexpected: unknown and unhandled change type
                     System.err.println("runPitMutationTesting(): unknown change type found: " + mutatedFile.diffStatus);
@@ -739,7 +756,7 @@ class MainWorker implements Worker {
 
         }
 
-        PitOutput pitOutput = new PitOutput(currentCommitHash, mutatedFiles);
+        currentPitOutput = new PitOutput(currentCommitHash, mutatedFiles);
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
@@ -748,7 +765,7 @@ class MainWorker implements Worker {
         pitOutputFileName = pitOutputFileName.replace(HASH_PLACEHOLDER,
                 currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash);
 
-        saveMachineOutput(pitOutput, pitOutputFileName);
+        Utils.saveMachineOutput(currentPitOutput, pitOutputFileName, outputPath, zipOutput, jsonHandler);
     }
 
 
@@ -758,9 +775,8 @@ class MainWorker implements Worker {
 
         int maxMutationsNo = buildPitMatrix(childCommitHash, currentCommitHash, pitMatrix);
 
-
-        // TODO don't exit if there are no mutations
-        if (maxMutationsNo == -1) App.systemExit(99);
+//        if (maxMutationsNo == -1) App.systemExit(99);
+        if (maxMutationsNo == -1) return;
 
 
         String formattedPitMatrixOutput = formatPitMatrixOutput(pitMatrix, maxMutationsNo);
@@ -786,86 +802,69 @@ class MainWorker implements Worker {
             }
         }
 
-
         // Write machine readable output file with results of matrix analysis
         MatrixOutput matrixOutput = new MatrixOutput(childCommitHash, currentCommitHash, pitMatrix);
 
-        String matrixMachineOutputFileName = MATRIX_MACHINE_OUTPUT_BASE_FILE_NAME;
-        matrixMachineOutputFileName = matrixMachineOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
-        matrixMachineOutputFileName = matrixMachineOutputFileName.replace(HASH_PLACEHOLDER, commitHash);
+        // noinspection Duplicates
+        if (machineOutput) {
+            String matrixMachineOutputFileName = MATRIX_MACHINE_OUTPUT_BASE_FILE_NAME;
+            matrixMachineOutputFileName = matrixMachineOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
+            matrixMachineOutputFileName = matrixMachineOutputFileName.replace(HASH_PLACEHOLDER, commitHash);
 
-        saveMachineOutput(matrixOutput, matrixMachineOutputFileName);
-
+            Utils.saveMachineOutput(matrixOutput, matrixMachineOutputFileName, outputPath, zipOutput, jsonHandler);
+        }
 
         if (changedMutations != null) {
             String changesMachineOutputFileName = CHANGES_MACHINE_OUTPUT_BASE_FILE_NAME;
             changesMachineOutputFileName = changesMachineOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
             changesMachineOutputFileName = changesMachineOutputFileName.replace(HASH_PLACEHOLDER, commitHash);
 
-            saveMachineOutput(changedMutations, changesMachineOutputFileName);
+            Utils.saveMachineOutput(changedMutations, changesMachineOutputFileName, outputPath, zipOutput, jsonHandler);
         }
     }
 
 
-    private void saveMachineOutput(Object object, String filename) throws IOException {
-        if (zipOutput) {
-            OutputStream outputStream = zipFileOutputStream(outputPath, filename);
-            jsonHandler.saveToJSON(object, outputStream);
-        } else {
-            String changesMachineOutputPath = Paths.get(outputPath, filename).toString();
-            jsonHandler.saveToJSON(object, changesMachineOutputPath);
-        }
-    }
+    private int buildPitMatrix(String childCommitHash, String currentCommitHash, int[][] pitMatrix) {
 
+        PitOutput currentPitOutput = this.currentPitOutput.getClone();
 
-    private int buildPitMatrix(String currentCommitHash, String parentCommitHash, int[][] pitMatrix) {
+        // First run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at each of the
+        // mutations in the child commit against those in the parent commit.
+        countMutations(childPitOutput, childCommitHash, true,
+                currentPitOutput, currentCommitHash, pitMatrix, childDiffOutput);
 
-        PitOutput currentCommitPitOutput = loadPitOutput(currentCommitHash, new PitOutput());
-        PitOutput parentCommitPitOutput = loadPitOutput(parentCommitHash, new PitOutput());
+        // NOTE however that while this first run looks at every mutation that exists in the child commit, it does not
+        // look at the mutations in the parent commit; this is because it only looks one way - i.e. it loops through
+        // each mutation from each method from each class from each file in the child commit and checks to see if the
+        // same one exists in the parent commit by picking the keys from the hash map of the parent commit - therefore,
+        // it DOES NOT loop through the parent commit.
+        //
+        // What this means is that the mutations that did exist in the parent commit but no longer exist in the child
+        // commit are not picked up during this run and are not added to the statistic. As a result, a second run is
+        // required where the process is repeated, this time by looking the other way, i.e. looping through each
+        // mutation from the parent commit and checking to see if a corresponding one exists in the child commit.
+        //
+        // Yet, it immediately becomes apparent that by using this simplistic approach all the mutations that exist in
+        // both commits would be looped through (and potentially counted) twice - once in the first run and then again
+        // in the second run. To avoid this issue, during the first run, every mutation from the child commit that is
+        // found in the parent commit is added to the statistic and then is removed from the hash map storing the data
+        // for the parent commit. This way, at the end of the first run, the hash map storing the data for the parent
+        // commit will now contain only those mutations that did exist in the parent commit but are no longer found in
+        // the child commit. Therefore, during the second run, only these mutations are looped through and added to the
+        // statistic. Furthermore, in such cases where there is no change in mutations between subsequent commits, the
+        // second run will effectively be skipped as the hash map storing the data for the parent commit will have been
+        // emptied during the first run.
 
-        if (currentCommitPitOutput == null || parentCommitPitOutput == null) return -1;
-
-        DiffOutput diffOutput = loadDiffOutput(currentCommitHash, new DiffOutput());
-
-        // First run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at
-        // each of the mutations in the new commit against those in the old commit.
-        countMutations(currentCommitPitOutput, currentCommitHash, true,
-                parentCommitPitOutput, parentCommitHash, pitMatrix, diffOutput);
-
-        // NOTE however that while this first run looks at every mutation that exists in the new commit,
-        // it does not look at the mutations in the old commit; this is because it only looks one way - i.e.
-        // it loops through each mutation from each method from each class from each file in the new commit
-        // and checks to see if the same one exists in the old commit by picking the keys from the
-        // hash map of the old commit - therefore, it DOES NOT loop through the old commit.
-        // What this means is that the mutations that did exist in the old commit but no longer exist in the
-        // new commit are not picked up during this run and are not added to the statistic.
-        // As a result, a second run is required where the process is repeated, this time by looking the
-        // other way, i.e. looping through each mutation from the old commit and checking to see if a
-        // corresponding one exists in the new commit.
-        // Yet, it immediately becomes apparent that by using this simplistic approach all the mutations that
-        // exist in both commits would be looped through (and potentially counted) twice - once in the first
-        // run and then again in the second run. To avoid this issue, during the first run, every mutation
-        // from the new commit that is found in the old commit is added to the statistic and then is removed
-        // from the hash map storing the data for the old commit. This way, at the end of the first run, the
-        // hash map storing the data for the old commit will now contain only those mutations that did exist
-        // in the old commit but are no longer found in the new commit. Therefore, during the second run, only
-        // these mutations are looped through and added to the statistic. Furthermore, in such cases where
-        // there is no change in mutations between subsequent commits, the second run will effectively be
-        // skipped as the hash map storing the data for the old commit will have been emptied during the first
-        // run.
-
-        // Second run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at
-        // the mutations in the old commit against those in the new commit
-        countMutations(parentCommitPitOutput, parentCommitHash, false,
-                currentCommitPitOutput, currentCommitHash, pitMatrix, diffOutput);
-
+        // Second run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at the mutations
+        // in the parent commit against those in the child commit
+        countMutations(currentPitOutput, currentCommitHash, false,
+                childPitOutput, childCommitHash, pitMatrix, childDiffOutput);
 
         for (int i = 0; i < ROW_COL_TOTAL; i++)
             for (int j = 0; j < ROW_COL_TOTAL; j++) {
                 pitMatrix[i][ROW_COL_TOTAL] += pitMatrix[i][j];
                 pitMatrix[ROW_COL_TOTAL][i] += pitMatrix[j][i];
             }
-
 
         int maxValue = 0;
         for (int i = 0; i < SIZE_PIT_MATRIX; i++) {
@@ -877,104 +876,113 @@ class MainWorker implements Worker {
     }
 
 
-    private void countMutations(PitOutput newCommitPitOutput, String newCommitHash, boolean isCurrentCommit,
-                                PitOutput oldCommitPitOutput, String oldCommitHash,
+    private void countMutations(PitOutput childPitOutput, String childCommitHash, boolean isChildCommit,
+                                PitOutput parentPitOutput, String parentCommitHash,
                                 int[][] pitMatrix, DiffOutput diffOutput) {
 
-        String newFileName, newClassName, newMethodName, oldFileName, oldClassName, oldMethodName;
-        MutatedFile newMutatedFile, oldMutatedFile;
-        MutatedFile.MutatedClass newMutatedClass, oldMutatedClass;
-        MutatedFile.MutatedMethod newMutatedMethod, oldMutatedMethod;
+        String childFileName, childClassName, childMethodName, parentFileName, parentClassName, parentMethodName;
+        MutatedFile childMutatedFile, parentMutatedFile;
+        MutatedFile.MutatedClass childMutatedClass, parentMutatedClass;
+        MutatedFile.MutatedMethod childMutatedMethod, parentMutatedMethod;
 
         boolean renamedFile;
 
-        for (Map.Entry<String, MutatedFile> newMutatedFileEntry : newCommitPitOutput.mutatedFiles.entrySet()) {
+        for (Map.Entry<String, MutatedFile> newMutatedFileEntry : childPitOutput.mutatedFiles.entrySet()) {
 
-            newFileName = newMutatedFileEntry.getKey();
-            newMutatedFile = newMutatedFileEntry.getValue();
+            childFileName = newMutatedFileEntry.getKey();
+            childMutatedFile = newMutatedFileEntry.getValue();
 
-            ChangedFile diffChangedFile = diffOutput.changedFiles.getOrDefault(newFileName, null);
+            ChangedFile diffChangedFile = diffOutput.changedFiles.getOrDefault(childFileName, null);
 
-            if (isCurrentCommit && diffChangedFile != null && diffChangedFile.diffStatus.equals(DIFF_STATUS_RENAMED)) {
-                oldFileName = diffChangedFile.oldFileName;
+            if (isChildCommit && diffChangedFile != null && diffChangedFile.diffStatus.equals(DIFF_STATUS_RENAMED)) {
+                parentFileName = diffChangedFile.oldFileName;
                 renamedFile = true;
             } else {
-                oldFileName = newFileName;
+                parentFileName = childFileName;
                 renamedFile = false;
             }
 
-            oldMutatedFile = oldCommitPitOutput.mutatedFiles.get(oldFileName);
+            parentMutatedFile = parentPitOutput.mutatedFiles.get(parentFileName);
 
-            for (Map.Entry<String, MutatedFile.MutatedClass> newMutatedClassEntry : newMutatedFile.mutatedClasses.entrySet()) {
+            for (Map.Entry<String, MutatedFile.MutatedClass> newMutatedClassEntry : childMutatedFile.mutatedClasses.entrySet()) {
 
-                newClassName = newMutatedClassEntry.getKey();
-                newMutatedClass = newMutatedClassEntry.getValue();
+                childClassName = newMutatedClassEntry.getKey();
+                childMutatedClass = newMutatedClassEntry.getValue();
 
-                if (oldMutatedFile != null) {
-                    oldClassName = renamedFile ? newClassName.replace(getNameOnly(newFileName), getNameOnly(oldFileName)) : newClassName;
-                    oldMutatedClass = oldMutatedFile.mutatedClasses.get(oldClassName);
+                if (parentMutatedFile != null) {
+                    parentClassName = renamedFile ?
+                            childClassName.replace(getNameOnly(childFileName), getNameOnly(parentFileName)) :
+                            childClassName;
+                    parentMutatedClass = parentMutatedFile.mutatedClasses.get(parentClassName);
                 } else {
-                    oldClassName = null;
-                    oldMutatedClass = null;
+                    parentClassName = null;
+                    parentMutatedClass = null;
                 }
 
-                for (Map.Entry<String, MutatedFile.MutatedMethod> newMutatedMethodEntry : newMutatedClass.mutatedMethods.entrySet()) {
+                for (Map.Entry<String, MutatedFile.MutatedMethod> newMutatedMethodEntry :
+                        childMutatedClass.mutatedMethods.entrySet()) {
 
-                    newMethodName = newMutatedMethodEntry.getKey();
-                    newMutatedMethod = newMutatedMethodEntry.getValue();
+                    childMethodName = newMutatedMethodEntry.getKey();
+                    childMutatedMethod = newMutatedMethodEntry.getValue();
 
-                    if (oldMutatedClass != null) {
-                        oldMethodName = renamedFile ? newMethodName.replace(getNameOnly(newFileName), getNameOnly(oldFileName)) : newMethodName;
-                        oldMutatedMethod = oldMutatedClass.mutatedMethods.get(oldMethodName);
+                    if (parentMutatedClass != null) {
+                        parentMethodName = renamedFile ?
+                                childMethodName.replace(getNameOnly(childFileName), getNameOnly(parentFileName)) :
+                                childMethodName;
+                        parentMutatedMethod = parentMutatedClass.mutatedMethods.get(parentMethodName);
                     } else {
-                        oldMethodName = null;
-                        oldMutatedMethod = null;
+                        parentMethodName = null;
+                        parentMutatedMethod = null;
                     }
 
                     // For the current method, iterate through each of its mutations
-                    for (MutatedFile.Mutation newMutation : newMutatedMethod.mutations) {
+                    for (MutatedFile.Mutation newMutation : childMutatedMethod.mutations) {
 
                         // Initially, assume that the mutation does not exist in the old commit
                         int matrixRow = ROW_COL_NON_EXISTENT;
-
                         MutatedFile.Mutation oldMutation = null;
 
                         // Check if the same mutated file, class and method was found in the old commit;
                         // if this condition is not met, then the above assumption holds
-                        if (oldMutatedFile != null && oldMutatedClass != null && oldMutatedMethod != null) {
+                        if (parentMutatedFile != null && parentMutatedClass != null && parentMutatedMethod != null) {
 
-                            Iterator<MutatedFile.Mutation> oldMutationsIterator = oldMutatedMethod.mutations.listIterator();
+                            Iterator<MutatedFile.Mutation> oldMutationsIterator =
+                                    parentMutatedMethod.mutations.listIterator();
 
                             // If the condition is met, we still need to iterate through each of the
                             // mutations from the old commit and see if the same one is found
                             while (oldMutationsIterator.hasNext()) {
-                                oldMutation = oldMutationsIterator.next();
+                                MutatedFile.Mutation mutation = oldMutationsIterator.next();
 
-                                int newMutationOldLineNo = newMutation.lineNo;
+                                int newMutationOldLineNo = newMutation.currentCommitData.lineNo;
 
                                 if (diffChangedFile != null) {
-                                    int mapLineNo = diffChangedFile.newLinesMap.get(newMutation.lineNo);
+                                    int mapLineNo = diffChangedFile.newLinesMap.get(newMutation.currentCommitData.lineNo);
                                     newMutationOldLineNo = diffChangedFile.mergedLines.get(mapLineNo).oldLineNo;
                                 }
 
                                 // TODO what happens if the line has been changed? i.e. lineDiffStatus is not the same?
 
-                                boolean isSameMutation = newMutationOldLineNo == oldMutation.lineNo &&
-                                        newMutation.index.equals(oldMutation.index) &&
-                                        newMutation.mutator.equals(oldMutation.mutator) &&
-                                        newMutation.description.equals(oldMutation.description);
+                                boolean isSameMutation = newMutationOldLineNo == mutation.currentCommitData.lineNo &&
+                                        newMutation.currentCommitData.index.equals(mutation.currentCommitData.index) &&
+                                        newMutation.currentCommitData.mutator.equals(mutation.currentCommitData.mutator) &&
+                                        newMutation.currentCommitData.description.equals(mutation.currentCommitData.description);
 
                                 if (isSameMutation) {
                                     // if the same mutation if found, then we need to add it to the
                                     // relevant row in the statistics matrix
-                                    matrixRow = getMatrixRowCol(oldMutation.pitStatus);
+                                    matrixRow = getMatrixRowCol(mutation.currentCommitData.pitStatus);
+
+                                    // we also need to store it for potential use in the changed mutations method
+                                    oldMutation = mutation;
 
                                     // and if we're looking at the new commit against the old commit (i.e. this is
                                     // the first run - see long explanation in buildPitMatrix method) remove the
                                     // mutation from the hash map storing the old commit
-                                    if (isCurrentCommit) oldMutationsIterator.remove();
+                                    if (isChildCommit) oldMutationsIterator.remove();
 
-                                    // then break out of the while loop as we've found the mutation we were looking for
+                                    // finally, break out of the loop since we found the mutation we were looking for
+                                    // NOTE: the assumption is that each mutation is unique
                                     break;
                                 }
                             }
@@ -982,15 +990,15 @@ class MainWorker implements Worker {
 
                         // the columns in the statistics matrix correspond to the new commit and are therefore
                         // fully determined by the status of the mutation in the new commit
-                        int matrixCol = getMatrixRowCol(newMutation.pitStatus);
+                        int matrixCol = getMatrixRowCol(newMutation.currentCommitData.pitStatus);
 
-                        String oldMutatedMethodDescription =
-                                oldMutatedMethod == null ? null : oldMutatedMethod.description;
+                        String oldMethodDescription =
+                                parentMutatedMethod == null ? null : parentMutatedMethod.description;
 
                         // BIG NOTE: This method is used for both runs, i.e. new commit vs old commit AND
                         // old commit vs new commit. However, the columns of the statistics matrix correspond
                         // to the new commit, while the rows correspond to the old commit.
-                        if (isCurrentCommit) {
+                        if (isChildCommit) {
                             // As such, if we are in the first run (i.e. new commit vs old commit) the variables
                             // that define the rows and columns of the statistic matrix hold the meaning given by
                             // their names:
@@ -1002,9 +1010,9 @@ class MainWorker implements Worker {
                             // if however the mutation status has changed, i.e. row != col, then we need to store
                             // additional details for further investigation
                             if (matrixRow != matrixCol)
-                                addChangedMutation(newCommitHash, oldCommitHash, diffChangedFile, matrixCol,
-                                        newFileName, newClassName, newMethodName, newMutation.getClone(),
-                                        oldMutation, oldMutatedMethodDescription);
+                                addChangedMutation(childCommitHash, parentCommitHash, diffChangedFile, matrixCol,
+                                        childFileName, childClassName, childMethodName, childMutatedMethod.description,
+                                        newMutation.getClone(), oldMutation, oldMethodDescription);
                         } else {
                             // if we are in the second run however, we are effectively looking at the transposed
                             // statistics matrix and therefore the meaning of the row and column variables is
@@ -1012,27 +1020,27 @@ class MainWorker implements Worker {
                             pitMatrix[matrixCol][matrixRow]++;
 
                             if (matrixRow != matrixCol)
-                                addChangedMutation(newCommitHash, oldCommitHash, diffChangedFile, ROW_COL_NON_EXISTENT,
-                                        newFileName, newClassName, newMethodName, newMutation.getClone(),
-                                        oldMutation, oldMutatedMethodDescription);
+                                addChangedMutation(childCommitHash, parentCommitHash, diffChangedFile, ROW_COL_NON_EXISTENT,
+                                        childFileName, childClassName, childMethodName, childMutatedMethod.description,
+                                        newMutation.getClone(), oldMutation, oldMethodDescription);
                         }
                     }
-                    if (isCurrentCommit && oldMutatedMethod != null && oldMutatedMethod.mutations.size() == 0)
-                        oldMutatedClass.mutatedMethods.remove(oldMethodName);
+                    if (isChildCommit && parentMutatedMethod != null && parentMutatedMethod.mutations.size() == 0)
+                        parentMutatedClass.mutatedMethods.remove(parentMethodName);
                 }
-                if (isCurrentCommit && oldMutatedClass != null && oldMutatedClass.mutatedMethods.size() == 0)
-                    oldMutatedFile.mutatedClasses.remove(oldClassName);
+                if (isChildCommit && parentMutatedClass != null && parentMutatedClass.mutatedMethods.size() == 0)
+                    parentMutatedFile.mutatedClasses.remove(parentClassName);
             }
-            if (isCurrentCommit && oldMutatedFile != null && oldMutatedFile.mutatedClasses.size() == 0)
-                oldCommitPitOutput.mutatedFiles.remove(oldFileName);
+            if (isChildCommit && parentMutatedFile != null && parentMutatedFile.mutatedClasses.size() == 0)
+                parentPitOutput.mutatedFiles.remove(parentFileName);
         }
     }
 
 
     private void addChangedMutation(String newCommitHash, String oldCommitHash, ChangedFile diffChangedFile,
-                                    int position, String newFileName, String newClassName, String newMethodName,
-                                    MutatedFile.Mutation changedMutation, MutatedFile.Mutation oldMutation,
-                                    String oldMutatedMethodDescription) {
+                                    int mutationStatus, String newFileName, String newClassName, String newMethodName,
+                                    String newMethodDescription, MutatedFile.Mutation changedMutation,
+                                    MutatedFile.Mutation oldMutation, String oldMethodDescription) {
 
         // the changed mutations list is build with respect to the current commit; as such, mutations that exist in the
         // current commit will be placed in the position corresponding to their status in the current commit, i.e.
@@ -1041,7 +1049,7 @@ class MainWorker implements Worker {
 
         // if we are in the first run of the countMutations method, and are thus looking at the current commit, the
         // position of all mutations will be greater than "ROW_COL_NON_EXISTENT" (i.e. position zero)
-        boolean isCurrentCommit = position > ROW_COL_NON_EXISTENT;
+        boolean isCurrentCommit = mutationStatus > ROW_COL_NON_EXISTENT;
 
         if (changedMutations == null)
             changedMutations = isCurrentCommit ?
@@ -1050,43 +1058,7 @@ class MainWorker implements Worker {
                     // oldCommitHash and newCommitHash values have been swapped so we need to swap them back:
                     new ChangedMutations(oldCommitHash, newCommitHash);
 
-        HashMap<String, MutatedFile> mutatedFiles = null;
-
-        switch (position) {
-            case ROW_COL_NON_EXISTENT:
-                if (changedMutations.removedMutations == null) changedMutations.removedMutations = new HashMap<>();
-                mutatedFiles = changedMutations.removedMutations;
-                break;
-            case ROW_COL_KILLED:
-                if (changedMutations.killedMutations == null) changedMutations.killedMutations = new HashMap<>();
-                mutatedFiles = changedMutations.killedMutations;
-                break;
-            case ROW_COL_SURVIVED:
-                if (changedMutations.survivedMutations == null) changedMutations.survivedMutations = new HashMap<>();
-                mutatedFiles = changedMutations.survivedMutations;
-                break;
-            case ROW_COL_NO_COVERAGE:
-                if (changedMutations.noCoverageMutations == null) changedMutations.noCoverageMutations = new HashMap<>();
-                mutatedFiles = changedMutations.noCoverageMutations;
-                break;
-            case ROW_COL_NON_VIABLE:
-                if (changedMutations.nonViableMutations == null) changedMutations.nonViableMutations = new HashMap<>();
-                mutatedFiles = changedMutations.nonViableMutations;
-                break;
-            case ROW_COL_TIMED_OUT:
-                if (changedMutations.timedOutMutations == null) changedMutations.timedOutMutations = new HashMap<>();
-                mutatedFiles = changedMutations.timedOutMutations;
-                break;
-            case ROW_COL_MEMORY_ERROR:
-                if (changedMutations.memoryErrorMutations == null) changedMutations.memoryErrorMutations = new HashMap<>();
-                mutatedFiles = changedMutations.memoryErrorMutations;
-                break;
-            case ROW_COL_RUN_ERROR:
-                if (changedMutations.runErrorMutations == null) changedMutations.runErrorMutations = new HashMap<>();
-                mutatedFiles = changedMutations.runErrorMutations;
-                break;
-        }
-
+        HashMap<String, MutatedFile> mutatedFiles = getHashMapForRelevantMutationStatus(mutationStatus);
 
         boolean isNewMutatedFile = false,
                 isNewMutatedClass = false,
@@ -1101,6 +1073,10 @@ class MainWorker implements Worker {
             if (diffChangedFile != null) {
                 mutatedFile.oldFileName = diffChangedFile.oldFileName;
                 mutatedFile.diffStatus = diffChangedFile.diffStatus;
+            } else {
+                // if diffChangedFile is null, then the file has not changed
+                mutatedFile.oldFileName = newFileName;
+                mutatedFile.diffStatus = STATUS_UNCHANGED;
             }
         }
 
@@ -1118,6 +1094,17 @@ class MainWorker implements Worker {
         } else {
             mutatedMethod = new MutatedFile.MutatedMethod();
             isNewMutatedMethod = true;
+
+            if (isCurrentCommit) {
+                mutatedMethod.description = newMethodDescription;
+                if (oldMethodDescription != null)
+                    mutatedMethod.description_old = oldMethodDescription;
+            } else {
+                if (oldMethodDescription == null)
+                    mutatedMethod.description_old = newMethodDescription;
+                else
+                    mutatedMethod.description = mutatedMethod.description_old = newMethodDescription;
+            }
         }
 
         changedMutation.mutationStatus = isCurrentCommit ?
@@ -1132,73 +1119,88 @@ class MainWorker implements Worker {
 
         if (changedMutation.mutationStatus.equals(STATUS_EXISTING)) {
 
-            changedMutation.detected_old = oldMutation.detected;
-            changedMutation.pitStatus_old = oldMutation.pitStatus;
-            changedMutation.lineNo_old = oldMutation.lineNo;
+            changedMutation.parentCommitData = oldMutation.currentCommitData.getClone();
 
-            if (!oldMutation.pitStatus.equals(PIT_STATUS_KILLED)) {
+            if (!oldMutation.currentCommitData.pitStatus.equals(PIT_STATUS_KILLED)) {
 
-                if (changedMutation.pitStatus.equals(PIT_STATUS_KILLED))
-                    changedMutation.killingTest.testStatus = STATUS_NEW;
+                if (changedMutation.currentCommitData.pitStatus.equals(PIT_STATUS_KILLED))
+                    changedMutation.currentCommitData.killingTest.testStatus = STATUS_NEW;
 
             } else {
 
-                changedMutation.killingTest_old = oldMutation.killingTest.getClone();
+                if (changedMutation.currentCommitData.pitStatus.equals(PIT_STATUS_KILLED)) {
 
-                if (changedMutation.pitStatus.equals(PIT_STATUS_KILLED)) {
-                    String newTestFileName = changedMutation.killingTest.testFile.fileName;
-                    String oldTestFileName = oldMutation.killingTest.testFile.fileName;
+                    changedMutation.currentCommitData.killingTest.testFile.testMethod_old =
+                            changedMutation.parentCommitData.killingTest.testFile.testMethod;
+                    changedMutation.parentCommitData.killingTest.testFile.diffStatus = null;
+                    changedMutation.parentCommitData.killingTest.testFile.fileName_old = null;
+                    changedMutation.parentCommitData.killingTest.testFile.testMethod_old = null;
 
-                    String newTestMethod = changedMutation.killingTest.testFile.testMethod;
-                    String oldTestMethod = oldMutation.killingTest.testFile.testMethod;
+                    String newTestFileName = changedMutation.currentCommitData.killingTest.testFile.fileName;
+                    String oldTestFileName = oldMutation.currentCommitData.killingTest.testFile.fileName;
 
-                    changedMutation.killingTest.testStatus =
+                    String newTestMethod = changedMutation.currentCommitData.killingTest.testFile.testMethod;
+                    String oldTestMethod = oldMutation.currentCommitData.killingTest.testFile.testMethod;
+
+                    changedMutation.currentCommitData.killingTest.testStatus =
                             newTestFileName.equals(oldTestFileName) && newTestMethod.equals(oldTestMethod) ?
                                     STATUS_UNCHANGED : STATUS_CHANGED;
 
-                    changedMutation.killingTest.testFileStatus =
+                    changedMutation.currentCommitData.killingTest.testFileStatus =
                             newTestFileName.equals(oldTestFileName) ?
                                     STATUS_UNCHANGED : STATUS_CHANGED;
 
-                    changedMutation.killingTest.testMethodStatus =
-                            changedMutation.killingTest.testFileStatus.equals(STATUS_UNCHANGED) ?
+                    changedMutation.currentCommitData.killingTest.testMethodStatus =
+                            changedMutation.currentCommitData.killingTest.testFileStatus.equals(STATUS_UNCHANGED) ?
                                     (newTestMethod.equals(oldTestMethod) ? STATUS_UNCHANGED : STATUS_CHANGED)
                                     : STATUS_UNKNOWN;
                 } else {
-                    changedMutation.killingTest = new MutatedFile.KillingTest();
-                    changedMutation.killingTest.testStatus = STATUS_REGRESSED;
-                    changedMutation.killingTest.regressionNote = REGRESSION_NOTE;
+                    changedMutation.currentCommitData.killingTest = new MutatedFile.KillingTest();
+                    changedMutation.currentCommitData.killingTest.testStatus = STATUS_REGRESSED;
+                    changedMutation.currentCommitData.killingTest.regressionNote =
+                            REGRESSION_NOTE.replace(HASH_PLACEHOLDER, newCommitHash);
                 }
             }
         }
 
-
         mutatedMethod.mutations.add(changedMutation);
-
-
-        if (isCurrentCommit) {
-            if (oldMutatedMethodDescription != null)
-                mutatedMethod.description_old = oldMutatedMethodDescription;
-        } else {
-
-            // TODO sort out the method description
-
-//            System.err.println("oldMutatedMethodDescription: " + oldMutatedMethodDescription);
-//            System.err.println("mutatedMethod.description: " + mutatedMethod.description);
-
-            if (oldMutatedMethodDescription == null) {
-                mutatedMethod.description_old = mutatedMethod.description;
-                mutatedMethod.description = null;
-            } else {
-                mutatedMethod.description = oldMutatedMethodDescription;
-                mutatedMethod.description_old = oldMutatedMethodDescription;
-            }
-        }
 
         if (isNewMutatedMethod) mutatedClass.mutatedMethods.put(newMethodName, mutatedMethod);
         if (isNewMutatedClass) mutatedFile.mutatedClasses.put(newClassName, mutatedClass);
         if (isNewMutatedFile) mutatedFiles.put(newFileName, mutatedFile);
+    }
 
+
+    private HashMap<String, MutatedFile> getHashMapForRelevantMutationStatus(int mutationStatus) {
+        switch (mutationStatus) {
+            case ROW_COL_NON_EXISTENT:
+                if (changedMutations.removedMutations == null) changedMutations.removedMutations = new HashMap<>();
+                return changedMutations.removedMutations;
+            case ROW_COL_KILLED:
+                if (changedMutations.killedMutations == null) changedMutations.killedMutations = new HashMap<>();
+                return changedMutations.killedMutations;
+            case ROW_COL_SURVIVED:
+                if (changedMutations.survivedMutations == null) changedMutations.survivedMutations = new HashMap<>();
+                return changedMutations.survivedMutations;
+            case ROW_COL_NO_COVERAGE:
+                if (changedMutations.noCoverageMutations == null)
+                    changedMutations.noCoverageMutations = new HashMap<>();
+                return changedMutations.noCoverageMutations;
+            case ROW_COL_NON_VIABLE:
+                if (changedMutations.nonViableMutations == null) changedMutations.nonViableMutations = new HashMap<>();
+                return changedMutations.nonViableMutations;
+            case ROW_COL_TIMED_OUT:
+                if (changedMutations.timedOutMutations == null) changedMutations.timedOutMutations = new HashMap<>();
+                return changedMutations.timedOutMutations;
+            case ROW_COL_MEMORY_ERROR:
+                if (changedMutations.memoryErrorMutations == null)
+                    changedMutations.memoryErrorMutations = new HashMap<>();
+                return changedMutations.memoryErrorMutations;
+            // mutationStatus will always be one of these 8 values; to avoid returning null, use default for final case
+            default:    // case ROW_COL_RUN_ERROR:
+                if (changedMutations.runErrorMutations == null) changedMutations.runErrorMutations = new HashMap<>();
+                return changedMutations.runErrorMutations;
+        }
     }
 
 
@@ -1297,137 +1299,6 @@ class MainWorker implements Worker {
     }
 
 
-    private DiffOutput loadDiffOutput(String commitHash, Object o) {
-        return (DiffOutput) loadOutput(commitHash, TYPE_DIFF_MACHINE_OUTPUT, o);
-    }
-
-    private MatrixOutput loadMatrixOutput(String commitHash, Object o) {
-        return (MatrixOutput) loadOutput(commitHash, TYPE_MATRIX_MACHINE_OUTPUT, o);
-    }
-
-    private PitOutput loadPitOutput(String commitHash, Object o) {
-        return (PitOutput) loadOutput(commitHash, TYPE_PIT_MACHINE_OUTPUT, o);
-    }
-
-
-    private Object loadOutput(String commitHash, String outputType, Object o) {
-        String outputFileName = getOutputFileName(commitHash, outputType, outputPath);
-        boolean isZipFile = getExtension(outputFileName).equals(ZIP_EXTENSION);
-        try {
-            return isZipFile ?
-                    jsonHandler.loadFromJSON(zipFileInputStream(outputFileName), o) :
-                    jsonHandler.loadFromJSON(outputFileName, o);
-        } catch (Exception e) {
-            System.err.println("The " + outputType + " output file for commit " + commitHash + " could not be loaded.");
-        }
-        return null;
-    }
-
-    private OutputStream zipFileOutputStream(String rootPath, String sourceFile) throws IOException {
-        String zipFile = sourceFile.replace(getExtension(sourceFile), ZIP_EXTENSION);
-
-        Path zipFilePath = Paths.get(rootPath, zipFile);
-
-        ZipOutputStream zipOutputStream = new ZipOutputStream(Files.newOutputStream(zipFilePath));
-        zipOutputStream.putNextEntry(new ZipEntry(sourceFile));
-
-        return new BufferedOutputStream(zipOutputStream);
-    }
-
-
-    private InputStream zipFileInputStream(String rootPath, String zipFileName) throws IOException {
-        return zipFileInputStream(Paths.get(rootPath, zipFileName).toString());
-    }
-
-
-    private InputStream zipFileInputStream(String qualifiedFileName) throws IOException {
-        Path zipFilePath = Paths.get(qualifiedFileName);
-
-        ZipInputStream zipInputStream = new ZipInputStream(Files.newInputStream(zipFilePath));
-        zipInputStream.getNextEntry();
-
-        return zipInputStream;
-
-    }
-
-
-    private String getOutputFileName(String commit, String type, String directory) {
-        List<String> fileList = filesInDirectory(directory);
-
-        if (fileList == null) return null;
-
-        for (String qualifiedName : fileList) {
-            String fileName = Paths.get(qualifiedName).getFileName().toString();
-            if (fileName.startsWith(type) && fileName.contains(commit)) return qualifiedName;
-        }
-
-        return null;
-    }
-
-    private String getNameOnly(String fileName) {
-        fileName = Paths.get(fileName).getFileName().toString();
-        int lastIndexOfDot = fileName.lastIndexOf(".");
-        return lastIndexOfDot > 0 ? fileName.substring(0, lastIndexOfDot) : fileName;
-    }
-
-
-    private String getExtension(String fileName) {
-        fileName = Paths.get(fileName).getFileName().toString();
-        int lastIndexOfDot = fileName.lastIndexOf(".");
-        return lastIndexOfDot > 0 ? fileName.substring(lastIndexOfDot) : "";
-    }
-
-
-    private List<String> filesInDirectory(String directory) {
-        List<String> filesInDirectory = new ArrayList<>();
-        try {
-            Files.list(Paths.get(directory))
-                    .filter(Files::isRegularFile)
-                    .forEach(file -> filesInDirectory.add(file.toString()));
-        } catch (IOException e) {
-            return null;
-        }
-        return filesInDirectory;
-    }
-
-
-    private List<String> listTempFiles() {
-        return directoryContents(TEMP_DIRECTORY);
-    }
-
-
-    private List<String> directoryContents(String directory) {
-        List<String> directoryContents = new ArrayList<>();
-        try {
-            Files.list(Paths.get(directory))
-                    .forEach(file -> directoryContents.add(file.toString()));
-        } catch (IOException e) {
-            return null;
-        }
-        return directoryContents;
-    }
-
-
-    private void deleteNewTempFiles(List<String> oldTempFiles) {
-        try {
-            Files.list(Paths.get(TEMP_DIRECTORY))
-                    .forEach(file -> {
-                        if (!oldTempFiles.contains(file.toString()))
-                            try {
-                                Files.walk(file.toAbsolutePath())
-                                        .sorted(Comparator.reverseOrder())
-                                        .map(Path::toFile)
-                                        .forEach(File::delete);
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            }
-                    });
-        } catch (IOException e) {
-            System.out.println("deleteNewTempFiles(): An IOException was thrown while deleting the new temp files.");
-        }
-    }
-
-
     private File createTempPom(String repoPath, String pomFile) throws IOException, SAXException, TransformerException {
 
         File repositoryPom = new File(Paths.get(repoPath, pomFile).toString());
@@ -1506,271 +1377,4 @@ class MainWorker implements Worker {
 
         return pitPlugin;
     }
-
-
-    private String createOutputDirectory() {
-        String resultPath;
-        Path outputPath = Paths.get((pitStatReportsPathRelative ? projectPath : ""), pitStatReportsPath);
-
-        try {
-            // create all output directories and sub-directories if they don't already exist
-            resultPath = Files.createDirectories(outputPath).toString();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-
-        if (createTimestampDirectory) {
-            // create timestamped output sub-directory
-            outputPath = Paths.get(resultPath, startTime);
-            try {
-                resultPath = Files.createDirectory(outputPath).toString();
-            } catch (Exception e) {
-                e.printStackTrace();
-                return null;
-            }
-        }
-
-        return resultPath;
-    }
-
-
-    private String parseCommit(String commit) {
-
-        if (commit.equals("") || commit.equals("HEAD") || commit.equals(originalGitBranch))
-            return getCommitHash(commit);
-
-        if (commit.startsWith("HEAD") || commit.startsWith(originalGitBranch)) {
-
-            String tail = commit.substring(4);
-
-            if (tail.equals("~")) return getCommitHash(commit);
-
-            if (!tail.startsWith("~")) {
-
-                System.out.println("The revision you specified is invalid.");
-                System.out.println("Tip: enter the revision in form <refname>~<n>");
-                App.systemExit(99);
-
-            } else {
-
-                String generationString = tail.substring(1);
-                int generation = 0;
-
-                try {
-                    generation = Integer.valueOf(generationString);
-                    if (generation < 0) throw new NumberFormatException();
-                } catch (NumberFormatException e) {
-                    System.out.println("The generation you specified is invalid: " + generationString);
-                    System.out.println("Tip: the generation should be a positive integer");
-                    App.systemExit(99);
-                }
-
-                if (generation > (commitsHashList.size() - 1)) {
-                    System.out.println("The generation you specified exceeds the history of the branch.");
-                    System.out.println("Tip: this branch has " + (commitsHashList.size() - 1) + " past commits");
-                    App.systemExit(99);
-                }
-            }
-
-            return getCommitHash(commit);
-        }
-
-        if (commit.length() == 7 && shortRevExists(commit)) return getCommitHash(commit);
-
-        if (commit.length() == 40 && commitsHashList.contains(commit)) return commit;
-
-        return null;
-    }
-
-
-    private boolean shortRevExists(String shortRev) {
-        for (String commit : commitsHashList)
-            if (commit.startsWith(shortRev)) return true;
-        return false;
-    }
-
-
-    private String getGitBranch(String commit) {
-
-        String gitOptions = GIT_OPTION_PATH + projectPath;
-
-        String command = GIT_REV_PARSE_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<revParseOptions>", REV_PARSE_OPTION_ABBREV_REF);
-        command = command + commit;
-
-
-        //commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-
-        return String.join("", commandExecutor.getStandardOutput());
-    }
-
-
-    private String checkoutPitStatBranch() {
-
-        String pitStatBranch = "pitstat" + startTime;
-
-        String gitOptions = GIT_OPTION_PATH + projectPath;
-
-        String command = GIT_CHECKOUT_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<checkoutOptions>", CHECKOUT_OPTION_NEW_BRANCH);
-        command = command + pitStatBranch;
-
-        //commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-
-        return pitStatBranch;
-    }
-
-
-    private void checkoutOriginalBranch() {
-        String gitOptions = GIT_OPTION_PATH + projectPath;
-
-        String command = GIT_CHECKOUT_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<checkoutOptions>", "");
-        command = command + originalGitBranch;
-
-//        commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-    }
-
-
-    private void deletePitStatBranch() {
-        String gitOptions = GIT_OPTION_PATH + projectPath;
-
-        String command = GIT_BRANCH_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<branchOptions>", BRANCH_DELETE_OPTION + BRANCH_FORCE_OPTION);
-        command = command + pitStatBranch;
-
-//        commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-    }
-
-
-    private void rollBackTo(String commit) {
-
-        String gitOptions = GIT_OPTION_PATH + projectPath;
-
-        String command = GIT_RESET_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<resetOptions>", RESET_HARD_OPTION);
-        command = command + commit;
-
-//        commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-    }
-
-
-    private List<String> getCommitsHashList() {
-        String gitOptions = GIT_OPTION_NO_PAGER + GIT_OPTION_PATH + projectPath;
-
-        String command = GIT_REV_LIST_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<revListOptions>", REV_LIST_ALL_OPTION);
-
-//        commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-
-        return commandExecutor.getStandardOutput();
-    }
-
-
-    private String getCommitHash(String commit) {
-
-        if (commit.length() == 0) return "";
-
-        String gitOptions = GIT_OPTION_PATH + projectPath;
-
-        String command = GIT_REV_PARSE_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<revParseOptions>", "");
-        command = command + commit;
-
-//        commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-
-        return commandExecutor.getStandardOutput().get(0);
-    }
-
-
-    private List<String> gitDiffNameStatus() {
-
-        String gitOptions = GIT_OPTION_NO_PAGER + GIT_OPTION_PATH + projectPath;
-        String diffOptions = DIFF_OPTION_NAME_STATUS + DIFF_OPTION_FIND_COPIES_HARDER;
-        String gitOldFile = "", gitNewFile = "";
-
-        String command = buildGitDiffCommand(
-                gitOptions,
-                diffOptions,
-                parentCommitHash,
-                gitOldFile,
-                currentCommitHash,
-                gitNewFile
-        );
-
-//        commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-
-        return commandExecutor.getStandardOutput();
-    }
-
-    private List<String> gitDiff(String changedFile, String newFile) {
-
-        String gitOptions = GIT_OPTION_NO_PAGER + GIT_OPTION_PATH + projectPath;
-        String diffOptions = DIFF_OPTION_FIND_COPIES_HARDER + DIFF_OPTION_NO_CONTEXT;
-        String gitOldFile = " -- " + changedFile;
-        String gitNewFile = " -- " + newFile;
-
-        String command = buildGitDiffCommand(gitOptions, diffOptions, parentCommitHash, gitOldFile, currentCommitHash, gitNewFile);
-
-        //commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-
-        return commandExecutor.getStandardOutput();
-    }
-
-    private String buildGitDiffCommand(String gitOptions, String diffOptions, String oldCommit, String gitOldFile, String newCommit, String gitNewFile) {
-
-        String command = GIT_DIFF_COMMAND;
-
-        command = command.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<diffOptions>", diffOptions);
-        command = command.replace("<oldCommit>", oldCommit);
-        command = command.replace("<oldFile>", gitOldFile);
-        command = command.replace("<newCommit>", newCommit);
-        command = command.replace("<newFileName>", gitNewFile);
-
-        return command;
-    }
-
-
-    private String paddingSpaces(int n) {
-        return String.join("", Collections.nCopies(n, " "));
-    }
-
 }

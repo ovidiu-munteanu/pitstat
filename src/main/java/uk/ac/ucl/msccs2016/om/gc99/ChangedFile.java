@@ -4,9 +4,20 @@ import java.util.List;
 
 class ChangedFile {
 
-    String newFileName;
-    String oldFileName;
-    String diffStatus;
+    static class LineOfCode {
+
+        String code, diffStatus;
+        int newLineNo, oldLineNo;
+
+        LineOfCode(String code, String diffStatus, int newLineNo, int oldLineNo) {
+            this.code = code;
+            this.diffStatus = diffStatus;
+            this.newLineNo = newLineNo;
+            this.oldLineNo = oldLineNo;
+        }
+    }
+
+    String newFileName, oldFileName, diffStatus;
 
     List<LineOfCode> mergedLines;
     List<Integer> newLinesMap, oldLinesMap;

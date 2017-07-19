@@ -18,8 +18,7 @@ class ThreadedStreamHandler extends Thread {
 
     public void run() {
 
-        InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
-        BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
         String line;
 
         try {

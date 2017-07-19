@@ -1,7 +1,7 @@
 Pit Mutation Testing Statistic Analysis
 
 usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports-path | -RP <path>]
-                                        [--start-commit | -SC <commit>]
+                                        [--start-commit | -SC <commit>] [--threads | -T <value>]
                                         [ ( --end-commit | -EC <commit> ) | ( --rollbacks | -R <value> ) ]
                                         [ ( [--no-human | -NH] [--zip-output | -Z] ) | ( --no-machine | -NM ) ]
                                         [--no-timestamp | -NT] [--shutdown | -S] [--help | -H]
@@ -22,19 +22,24 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                 - by default set to parent commit of start commit
                                 - <commit> may be specified as a short or long hash or in the format HEAD~[<value>]
                                   where <value> may be any positive integer number greater than zero, not exceeding
-                                  the commit history of the current branch
+                                  the commit history of the current branch; alternatively, instead of a value, the
+                                  keyword 'initial-commit' may be used, in which case pitstat will roll back through
+                                  the entire branch history until the initial commit is reached
                             NOTE: may not be used together with rollbacks option
 
     --rollbacks,    -R      run pitstat analysis rolling back specified number of commits from start commit
                                 - by default set to 1 (parent of start commit)
                                 - <value> may be any positive integer number greater than zero, not exceeding the
                                   commit history of the current branch; alternatively, the keyword 'max' may be
-                                  used in which case pitstat will roll back through the entire branch history until
+                                  used, in which case pitstat will roll back through the entire branch history until
                                   the initial commit is reached
                             NOTE: may not be used together with end commit option
 
-    // TODO finish argument description
-    --threads,      -T      number of threads to use for the pit mutation testing
+    --threads,      -T      number of threads to use for pit mutation testing
+                                - by default this is set to 1
+                                - <value> may be an integer number between 1 and 8
+                                NOTE: specifying a number of threads greater than the actual number of physical CPU
+                                cores available may actually slow down the pit mutation testing
 
     --no-human,     -NH     do not created human readable output
                             NOTE:
@@ -43,11 +48,8 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                 output is available
 
     --zip-output,   -Z      compress machine readable output into individual zip archives
-                            NOTE: may not be used together with no machine option
 
-    --no-machine,   -NM     OPTION NOT AVAILABLE (NOT YET IMPLEMENTED)
-
-                            do not created machine readable output
+    --no-machine,   -NM     do not created machine readable output
                             NOTE:
                                 - may not be used together with the no human option
                                 - applies only to those statistics where both machine readable and human readable
