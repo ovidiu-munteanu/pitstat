@@ -33,6 +33,9 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                   the initial commit is reached
                             NOTE: may not be used together with end commit option
 
+    // TODO finish argument description
+    --threads,      -T      number of threads to use for the pit mutation testing
+
     --no-human,     -NH     do not created human readable output
                             NOTE:
                                 - may not be used together with no machine option

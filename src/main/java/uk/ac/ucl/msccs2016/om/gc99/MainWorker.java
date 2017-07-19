@@ -63,6 +63,7 @@ class MainWorker implements Worker {
     private String startCommit;
     private String endCommit;
     private int maxRollbacks;
+    private int threadsNo;
 
     private List<String> commitsHashList;
 
@@ -98,7 +99,8 @@ class MainWorker implements Worker {
                boolean noMachine,
                String startCommit,
                String endCommit,
-               int maxRollbacks)
+               int maxRollbacks,
+               int threadsNo)
             throws Exception {
 
         startTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern(TIMESTAMP_PATTERN));
@@ -133,6 +135,7 @@ class MainWorker implements Worker {
         this.startCommit = startCommit;
         this.endCommit = endCommit;
         this.maxRollbacks = maxRollbacks;
+        this.threadsNo = threadsNo;
     }
 
 
@@ -648,10 +651,10 @@ class MainWorker implements Worker {
                     if (changedFiles.containsKey(mutatedFileName)) {
                         ChangedFile changedFile = changedFiles.get(mutatedFileName);
                         mutatedFile.oldFileName = changedFile.oldFileName;
-                        mutatedFile.fileDiffStatus = changedFile.diffStatus;
+                        mutatedFile.diffStatus = changedFile.diffStatus;
                     } else {
                         mutatedFile.oldFileName = mutatedFileName;
-                        mutatedFile.fileDiffStatus = STATUS_UNCHANGED;
+                        mutatedFile.diffStatus = STATUS_UNCHANGED;
                     }
                 }
             }
@@ -682,7 +685,7 @@ class MainWorker implements Worker {
             mutation.description = descriptionElement;
 
             if (mutation.detected && killingTestElement.length() > 0) {
-                MutatedFile.KillingTest killingTest = new MutatedFile.KillingTest();
+                MutatedFile.KillingTest killingTest = new MutatedFile.KillingTest(true);
 
                 killingTest.testFile.fileName = MAVEN_JAVA_TEST_SRC_PATH + "/" +
                         killingTestElement.substring(
@@ -706,11 +709,11 @@ class MainWorker implements Worker {
 
 
             if (!isEndCommit) {
-                if (mutatedFile.fileDiffStatus.equals(STATUS_UNCHANGED)) {
+                if (mutatedFile.diffStatus.equals(STATUS_UNCHANGED)) {
                     mutation.lineDiffStatus = STATUS_UNCHANGED;
-                } else if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED).contains(mutatedFile.fileDiffStatus)) {
+                } else if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED).contains(mutatedFile.diffStatus)) {
                     mutation.lineDiffStatus = STATUS_NEW;
-                } else if ((DIFF_STATUS_MODIFIED + DIFF_STATUS_RENAMED).contains(mutatedFile.fileDiffStatus)) {
+                } else if ((DIFF_STATUS_MODIFIED + DIFF_STATUS_RENAMED).contains(mutatedFile.diffStatus)) {
 
                     int mapLineNo = changedFiles.get(mutatedFileName).newLinesMap.get(mutation.lineNo);
 
@@ -718,8 +721,8 @@ class MainWorker implements Worker {
 
                 } else {
                     // unexpected: unknown and unhandled change type
-                    System.err.println("runPitMutationTesting(): unknown change type found: " + mutatedFile.fileDiffStatus);
-                    mutation.lineDiffStatus = mutatedFile.fileDiffStatus;
+                    System.err.println("runPitMutationTesting(): unknown change type found: " + mutatedFile.diffStatus);
+                    mutation.lineDiffStatus = mutatedFile.diffStatus;
                 }
             }
 
@@ -890,9 +893,10 @@ class MainWorker implements Worker {
             newFileName = newMutatedFileEntry.getKey();
             newMutatedFile = newMutatedFileEntry.getValue();
 
-            if (isCurrentCommit && diffOutput.changedFiles.containsKey(newFileName) &&
-                    diffOutput.changedFiles.get(newFileName).diffStatus.equals(DIFF_STATUS_RENAMED)) {
-                oldFileName = diffOutput.changedFiles.get(newFileName).oldFileName;
+            ChangedFile diffChangedFile = diffOutput.changedFiles.getOrDefault(newFileName, null);
+
+            if (isCurrentCommit && diffChangedFile != null && diffChangedFile.diffStatus.equals(DIFF_STATUS_RENAMED)) {
+                oldFileName = diffChangedFile.oldFileName;
                 renamedFile = true;
             } else {
                 oldFileName = newFileName;
@@ -948,10 +952,9 @@ class MainWorker implements Worker {
 
                                 int newMutationOldLineNo = newMutation.lineNo;
 
-                                if (diffOutput.changedFiles.containsKey(newFileName)) {
-                                    ChangedFile changedFile = diffOutput.changedFiles.get(newFileName);
-                                    int mapLineNo = changedFile.newLinesMap.get(newMutation.lineNo);
-                                    newMutationOldLineNo = changedFile.mergedLines.get(mapLineNo).oldLineNo;
+                                if (diffChangedFile != null) {
+                                    int mapLineNo = diffChangedFile.newLinesMap.get(newMutation.lineNo);
+                                    newMutationOldLineNo = diffChangedFile.mergedLines.get(mapLineNo).oldLineNo;
                                 }
 
                                 // TODO what happens if the line has been changed? i.e. lineDiffStatus is not the same?
@@ -999,7 +1002,7 @@ class MainWorker implements Worker {
                             // if however the mutation status has changed, i.e. row != col, then we need to store
                             // additional details for further investigation
                             if (matrixRow != matrixCol)
-                                addChangedMutation(newCommitHash, oldCommitHash, matrixCol,
+                                addChangedMutation(newCommitHash, oldCommitHash, diffChangedFile, matrixCol,
                                         newFileName, newClassName, newMethodName, newMutation.getClone(),
                                         oldMutation, oldMutatedMethodDescription);
                         } else {
@@ -1009,7 +1012,7 @@ class MainWorker implements Worker {
                             pitMatrix[matrixCol][matrixRow]++;
 
                             if (matrixRow != matrixCol)
-                                addChangedMutation(newCommitHash, oldCommitHash, ROW_COL_NON_EXISTENT,
+                                addChangedMutation(newCommitHash, oldCommitHash, diffChangedFile, ROW_COL_NON_EXISTENT,
                                         newFileName, newClassName, newMethodName, newMutation.getClone(),
                                         oldMutation, oldMutatedMethodDescription);
                         }
@@ -1026,8 +1029,8 @@ class MainWorker implements Worker {
     }
 
 
-    private void addChangedMutation(String newCommitHash, String oldCommitHash, int position,
-                                    String newFileName, String newClassName, String newMethodName,
+    private void addChangedMutation(String newCommitHash, String oldCommitHash, ChangedFile diffChangedFile,
+                                    int position, String newFileName, String newClassName, String newMethodName,
                                     MutatedFile.Mutation changedMutation, MutatedFile.Mutation oldMutation,
                                     String oldMutatedMethodDescription) {
 
@@ -1047,10 +1050,43 @@ class MainWorker implements Worker {
                     // oldCommitHash and newCommitHash values have been swapped so we need to swap them back:
                     new ChangedMutations(oldCommitHash, newCommitHash);
 
-        if (changedMutations.mutationsStatus[position] == null)
-            changedMutations.mutationsStatus[position] = new HashMap<>();
+        HashMap<String, MutatedFile> mutatedFiles = null;
 
-        HashMap<String, MutatedFile> mutatedFiles = changedMutations.mutationsStatus[position];
+        switch (position) {
+            case ROW_COL_NON_EXISTENT:
+                if (changedMutations.removedMutations == null) changedMutations.removedMutations = new HashMap<>();
+                mutatedFiles = changedMutations.removedMutations;
+                break;
+            case ROW_COL_KILLED:
+                if (changedMutations.killedMutations == null) changedMutations.killedMutations = new HashMap<>();
+                mutatedFiles = changedMutations.killedMutations;
+                break;
+            case ROW_COL_SURVIVED:
+                if (changedMutations.survivedMutations == null) changedMutations.survivedMutations = new HashMap<>();
+                mutatedFiles = changedMutations.survivedMutations;
+                break;
+            case ROW_COL_NO_COVERAGE:
+                if (changedMutations.noCoverageMutations == null) changedMutations.noCoverageMutations = new HashMap<>();
+                mutatedFiles = changedMutations.noCoverageMutations;
+                break;
+            case ROW_COL_NON_VIABLE:
+                if (changedMutations.nonViableMutations == null) changedMutations.nonViableMutations = new HashMap<>();
+                mutatedFiles = changedMutations.nonViableMutations;
+                break;
+            case ROW_COL_TIMED_OUT:
+                if (changedMutations.timedOutMutations == null) changedMutations.timedOutMutations = new HashMap<>();
+                mutatedFiles = changedMutations.timedOutMutations;
+                break;
+            case ROW_COL_MEMORY_ERROR:
+                if (changedMutations.memoryErrorMutations == null) changedMutations.memoryErrorMutations = new HashMap<>();
+                mutatedFiles = changedMutations.memoryErrorMutations;
+                break;
+            case ROW_COL_RUN_ERROR:
+                if (changedMutations.runErrorMutations == null) changedMutations.runErrorMutations = new HashMap<>();
+                mutatedFiles = changedMutations.runErrorMutations;
+                break;
+        }
+
 
         boolean isNewMutatedFile = false,
                 isNewMutatedClass = false,
@@ -1062,6 +1098,10 @@ class MainWorker implements Worker {
         } else {
             mutatedFile = new MutatedFile();
             isNewMutatedFile = true;
+            if (diffChangedFile != null) {
+                mutatedFile.oldFileName = diffChangedFile.oldFileName;
+                mutatedFile.diffStatus = diffChangedFile.diffStatus;
+            }
         }
 
         MutatedFile.MutatedClass mutatedClass;
@@ -1086,6 +1126,10 @@ class MainWorker implements Worker {
                 // encounter were not found when looking at the current commit, meaning they were removed
                 STATUS_REMOVED;
 
+        if (changedMutation.mutationStatus.equals(STATUS_REMOVED))
+            // translate values from fields to fields_old; sets fields to null
+            changedMutation = new MutatedFile.Mutation(changedMutation);
+
         if (changedMutation.mutationStatus.equals(STATUS_EXISTING)) {
 
             changedMutation.detected_old = oldMutation.detected;
@@ -1099,13 +1143,13 @@ class MainWorker implements Worker {
 
             } else {
 
-                changedMutation.killingTest.testFile_old = oldMutation.killingTest.testFile;
+                changedMutation.killingTest_old = oldMutation.killingTest.getClone();
 
                 if (changedMutation.pitStatus.equals(PIT_STATUS_KILLED)) {
                     String newTestFileName = changedMutation.killingTest.testFile.fileName;
-                    String newTestMethod = changedMutation.killingTest.testFile.testMethod;
-
                     String oldTestFileName = oldMutation.killingTest.testFile.fileName;
+
+                    String newTestMethod = changedMutation.killingTest.testFile.testMethod;
                     String oldTestMethod = oldMutation.killingTest.testFile.testMethod;
 
                     changedMutation.killingTest.testStatus =
@@ -1128,36 +1172,6 @@ class MainWorker implements Worker {
             }
         }
 
-        if (changedMutation.mutationStatus.equals(STATUS_REMOVED)) {
-
-            changedMutation.detected_old = changedMutation.detected;
-            changedMutation.pitStatus_old = changedMutation.pitStatus;
-            changedMutation.lineNo_old = changedMutation.lineNo;
-            changedMutation.mutator_old = changedMutation.mutator;
-            changedMutation.index_old = changedMutation.index;
-            changedMutation.description_old = changedMutation.description;
-
-            changedMutation.detected = null;
-            changedMutation.pitStatus = null;
-            changedMutation.lineNo = null;
-            changedMutation.lineDiffStatus = null;
-            changedMutation.mutator = null;
-            changedMutation.index = null;
-            changedMutation.description = null;
-
-            if (changedMutation.killingTest != null) {
-                changedMutation.killingTest.testStatus_old = changedMutation.killingTest.testStatus;
-                changedMutation.killingTest.testFileStatus_old = changedMutation.killingTest.testFileStatus;
-                changedMutation.killingTest.testMethodStatus_old = changedMutation.killingTest.testMethodStatus;
-                changedMutation.killingTest.testFile_old = changedMutation.killingTest.testFile;
-
-                changedMutation.killingTest.testStatus = null;
-                changedMutation.killingTest.testFileStatus = null;
-                changedMutation.killingTest.testMethodStatus = null;
-                changedMutation.killingTest.testFile = null;
-            }
-        }
-
 
         mutatedMethod.mutations.add(changedMutation);
 
@@ -1166,6 +1180,12 @@ class MainWorker implements Worker {
             if (oldMutatedMethodDescription != null)
                 mutatedMethod.description_old = oldMutatedMethodDescription;
         } else {
+
+            // TODO sort out the method description
+
+//            System.err.println("oldMutatedMethodDescription: " + oldMutatedMethodDescription);
+//            System.err.println("mutatedMethod.description: " + mutatedMethod.description);
+
             if (oldMutatedMethodDescription == null) {
                 mutatedMethod.description_old = mutatedMethod.description;
                 mutatedMethod.description = null;
@@ -1473,7 +1493,7 @@ class MainWorker implements Worker {
 
         pitTimestampedReports.appendChild(xmlDoc.createTextNode("false"));
         pitOutputFormats.appendChild(xmlDoc.createTextNode("XML"));
-        pitThreads.appendChild(xmlDoc.createTextNode("4"));
+        pitThreads.appendChild(xmlDoc.createTextNode(String.valueOf(threadsNo)));
 
         pitConfiguration.appendChild(pitTimestampedReports);
         pitConfiguration.appendChild(pitOutputFormats);

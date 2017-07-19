@@ -7,17 +7,17 @@ import java.util.List;
 class MutatedFile {
 
     String oldFileName;
-    String fileDiffStatus;
+    String diffStatus;
     HashMap<String, MutatedClass> mutatedClasses;
 
-    MutatedFile(){
+    MutatedFile() {
         mutatedClasses = new HashMap<>();
     }
 
     static class MutatedClass {
         HashMap<String, MutatedMethod> mutatedMethods;
 
-        MutatedClass(){
+        MutatedClass() {
             mutatedMethods = new HashMap<>();
         }
     }
@@ -41,22 +41,36 @@ class MutatedFile {
         Integer index, index_old;
         String mutator, mutator_old;
         String description, description_old;
-        KillingTest killingTest;
+        KillingTest killingTest, killingTest_old;
+
+        Mutation() {
+        }
+
+        Mutation(Mutation m) {
+            mutationStatus = m.mutationStatus;
+            detected_old = m.detected;
+            pitStatus_old = m.pitStatus;
+            lineNo_old = m.lineNo;
+            mutator_old = m.mutator;
+            index_old = m.index;
+            description_old = m.description;
+            killingTest_old = m.killingTest;
+        }
 
         Mutation getClone() {
             return (Mutation) JSONHandler.cloneObject(this);
         }
+
     }
 
     static class KillingTest {
 
         class TestFile {
             String fileName, fileName_old, diffStatus;
-
-            String testMethod;
+            String testMethod, testMethod_old;
         }
 
-        String testStatus, testStatus_old;
+        String testStatus;
         // testStatus records the status of the killing test with respect to the parent commit:
         //      "NEW"       the mutation was not killed in the parent commit
         //      "UNCHANGED" the test file and the test method have not changed
@@ -66,7 +80,7 @@ class MutatedFile {
         //      null        the mutation did not exist in the parent commit
         String regressionNote;
 
-        String testFileStatus, testFileStatus_old;
+        String testFileStatus;
         // testFileStatus records the status of the test file which generated the killing test for this mutation in the
         // parent commit, i.e. is it the same test file or a different test file:
         //      "CHANGED"   different test file
@@ -77,7 +91,7 @@ class MutatedFile {
         // mutation in the parent commit or is it a different one
 
 
-        String testMethodStatus, testMethodStatus_old;
+        String testMethodStatus;
         // testMethodStatus records the status of the test method which generated the killing test for this mutation in
         // the parent commit, i.e. is it the same test method or a different test method:
         //      "UNCHANGED" same test file, same method name
@@ -90,12 +104,19 @@ class MutatedFile {
         // or is a different test file, testMethodStatus is set to "UNKNOWN"
 
 
-        TestFile testFile, testFile_old;
+        TestFile testFile;
         // if this is a new killing test, i.e. the mutation was not killed in the parent commit, then testFile_old is
         // null (not explicitly initialised)
 
         KillingTest() {
-            testFile = new TestFile();
+        }
+
+        KillingTest(boolean initTestFile) {
+            if (initTestFile) testFile = new TestFile();
+        }
+
+        KillingTest getClone() {
+            return (KillingTest) JSONHandler.cloneObject(this);
         }
     }
 }

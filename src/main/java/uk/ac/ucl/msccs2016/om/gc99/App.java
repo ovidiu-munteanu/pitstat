@@ -25,6 +25,7 @@ public class App {
         String startCommit = "";
         String endCommit = null;
         int maxRollbacks = 1;
+        int threadsNo = 1;
 
         boolean endCommitArg = false, rollbacksArg = false;
 
@@ -44,11 +45,6 @@ public class App {
             String arg = args[i];
 
             switch (arg) {
-                case "-H":
-                case "--help":
-                    printHelp();
-                    systemExit(0);
-                    break;
                 case "-PP":
                 case "--project-path":
                     try {
@@ -152,6 +148,24 @@ public class App {
                     }
                     rollbacksArg = true;
                     break;
+                case "-T":
+                case "--threads":
+                    String threadsString = null;
+                    try {
+                        threadsString = args[++i];
+                        threadsNo = Integer.valueOf(threadsString);
+                        if (threadsNo < 1 || threadsNo > 8) throw new InvalidParameterException();
+                    } catch (ArrayIndexOutOfBoundsException e) {
+                        System.err.println("Number of threads not specified.");
+                        systemExit(99);
+                    } catch (NumberFormatException e) {
+                        System.err.println("Invalid number of threads: " + threadsString);
+                        systemExit(5);
+                    } catch (InvalidParameterException e) {
+                        System.err.println("Invalid number of threads - may be between 1 and 8.");
+                        systemExit(6);
+                    }
+                    break;
                 case "-NH":
                 case "--no-human":
                     if (noMachine) {
@@ -170,7 +184,7 @@ public class App {
                     noMachine = true;
                 case "-Z":
                 case "--zip-output":
-                    if (noMachine){
+                    if (noMachine) {
                         System.err.println("Cannot specify zip output with no machine readable output - " +
                                 "zip compression is available only for machine readable output.\n" +
                                 "Please try again using only one of the two options.");
@@ -185,6 +199,11 @@ public class App {
                 case "-S":
                 case "--shutdown":
                     shutdown = true;
+                    break;
+                case "-H":
+                case "--help":
+                    printHelp();
+                    systemExit(0);
                     break;
                 default:
                     System.err.println("Invalid argument: " + arg + "\n");
@@ -208,7 +227,8 @@ public class App {
                 noMachine,
                 startCommit,
                 endCommit,
-                maxRollbacks
+                maxRollbacks,
+                threadsNo
         );
 
 
@@ -220,7 +240,7 @@ public class App {
 
     }
 
-    private static void printHelp(){
+    private static void printHelp() {
         System.out.print(getResourceFileAsString("help.txt"));
     }
 
