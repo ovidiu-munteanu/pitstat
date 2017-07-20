@@ -65,8 +65,6 @@ interface Worker {
      String MVN_GOAL_TEST = " test ";
      String MVN_GOAL_PITEST = " org.pitest:pitest-maven:mutationCoverage ";
 
-     String HEAD_COMMIT = "HEAD";
-
      int
             ROW_COL_NON_EXISTENT = 0,
             ROW_COL_KILLED = 1,

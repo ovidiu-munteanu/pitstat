@@ -59,6 +59,8 @@ class MainWorker implements Worker {
 
     private int maxRollbacks;
 
+    private boolean resetIndex;
+    private boolean resetUntracked;
 
     private List<String> commitsHashList;
     private String startCommitHash;
@@ -135,64 +137,28 @@ class MainWorker implements Worker {
     }
 
 
-    boolean validStartEndCommits() {
-
-        originalGitBranch = GitUtils.getGitBranch(HEAD_COMMIT, projectPath, commandExecutor);
-        commitsHashList = GitUtils.getCommitsHashList(projectPath, commandExecutor);
-
-        startCommitHash = GitUtils.parseCommit(startCommit, originalGitBranch,
-                commitsHashList, projectPath, commandExecutor);
-        indexOfStartCommit = (startCommit.equals("") ? -1 : commitsHashList.indexOf(startCommitHash));
-
-        if (maxRollbacks > 0 && endCommit == null) {
-
-            int indexOfEndCommit = (maxRollbacks == Integer.MAX_VALUE) ?
-                    (commitsHashList.size() - 1) : (indexOfStartCommit + maxRollbacks);
-
-            if (indexOfEndCommit > (commitsHashList.size() - 1)) {
-                System.err.println("The number of rollbacks is greater than the history of this branch.");
-                App.systemExit(99);
-            }
-
-            endCommitHash = commitsHashList.get(indexOfEndCommit);
-
-        } else {
-
-            // TODO implement "initial-commit" command line option
-            if (endCommit.equals("initial-commit")) {
-                endCommitHash = commitsHashList.get(commitsHashList.size() - 1);
-            } else {
-                endCommitHash = GitUtils.parseCommit(endCommit, originalGitBranch,
-                        commitsHashList, projectPath, commandExecutor);
-            }
-
-            maxRollbacks = commitsHashList.indexOf(endCommitHash) - indexOfStartCommit;
-        }
-
-        if (maxRollbacks < 0) {
-            System.err.println("Start commit is older than end commit.");
-            System.out.println("Tip: pitStat rolls back from the start commit towards the end commit");
-            App.systemExit(99);
-        }
-
-        return true;
-    }
-
-
     void doWork() throws Exception {
 
+        String pitStatBranch = GitUtils.checkoutPitStatBranch(startTime, projectPath, commandExecutor);
+
+        validateBoundaryCommits();
+
+
         if (pitStatReportsPathRelative || createTimestampDirectory) {
+
             outputPath = Utils.createOutputDirectory(
                     pitStatReportsPath, pitStatReportsPathRelative,
                     startTime, createTimestampDirectory, projectPath);
+
             if (outputPath == null) App.systemExit(98);
+
         } else {
             outputPath = pitStatReportsPath;
         }
 
-        String pitStatBranch = GitUtils.checkoutPitStatBranch(startTime, projectPath, commandExecutor);
 
-        if (indexOfStartCommit > 0) GitUtils.rollBackTo(startCommitHash, projectPath, commandExecutor);
+        if (indexOfStartCommit > 0) GitUtils.gitResetHardTo(startCommitHash, projectPath, commandExecutor);
+
 
         int currentCommitIndex = indexOfStartCommit;
         int parentCommitIndex = currentCommitIndex + 1;
@@ -248,7 +214,7 @@ class MainWorker implements Worker {
                 currentCommitHash = commitsHashList.get(++currentCommitIndex);
                 parentCommitHash = ++parentCommitIndex == commitsHashList.size() ?
                         "currently at initial commit -> no parent hash" : commitsHashList.get(parentCommitIndex);
-                GitUtils.rollBackTo(currentCommitHash, projectPath, commandExecutor);
+                GitUtils.gitResetHardTo(currentCommitHash, projectPath, commandExecutor);
 
                 childDiffOutput = currentDiffOutput;
                 childPitOutput = currentPitOutput;
@@ -256,8 +222,99 @@ class MainWorker implements Worker {
 
         } while (!isEndCommit && currentRollback <= maxRollbacks);
 
+
+        if (resetUntracked) GitUtils.gitResetMixedTo(GitUtils.HEAD_PARENT, projectPath, commandExecutor);
+        if (resetIndex) GitUtils.gitResetSoftTo(GitUtils.HEAD_PARENT, projectPath, commandExecutor);
+
+
         GitUtils.checkoutOriginalBranch(originalGitBranch, projectPath, commandExecutor);
         GitUtils.deletePitStatBranch(pitStatBranch, projectPath, commandExecutor);
+    }
+
+
+    private void validateBoundaryCommits() {
+
+        startCommitHash = null;
+
+        if (startCommit.equals(GitUtils.INDEX))
+
+            if (GitUtils.indexNotEmpty(projectPath, commandExecutor)) {
+                startCommitHash = GitUtils.commitIndex(projectPath, commandExecutor);
+                resetIndex = true;
+
+                if (GitUtils.untrackedNotEmpty(projectPath, commandExecutor)) {
+                    startCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
+                    resetUntracked = true;
+                }
+
+            } else {
+                System.err.println("The index is empty - there are no staged changes.");
+                App.systemExit(99);
+            }
+
+        else if (startCommit.equals(GitUtils.UNTRACKED))
+
+            if (GitUtils.untrackedNotEmpty(projectPath, commandExecutor)) {
+
+                if (GitUtils.indexNotEmpty(projectPath, commandExecutor)) {
+                    GitUtils.commitIndex(projectPath, commandExecutor);
+                    resetIndex = true;
+                }
+
+                startCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
+                resetUntracked = true;
+
+            } else {
+                System.err.println("There are no untracked changes on the working tree.");
+                App.systemExit(99);
+            }
+
+
+        originalGitBranch = GitUtils.getGitBranch(GitUtils.HEAD, projectPath, commandExecutor);
+        commitsHashList = GitUtils.getCommitsHashList(projectPath, commandExecutor);
+
+
+        if (startCommitHash == null) {
+            startCommitHash = GitUtils.parseCommit(startCommit, originalGitBranch,
+                    commitsHashList, projectPath, commandExecutor);
+            resetIndex = resetUntracked = false;
+        }
+
+
+        indexOfStartCommit = commitsHashList.indexOf(startCommitHash);
+        int indexOfInitialCommit = commitsHashList.size() - 1;
+
+
+        if (maxRollbacks > 0 && endCommit == null) {
+
+            int indexOfEndCommit = maxRollbacks == Integer.MAX_VALUE ?
+                    indexOfInitialCommit : indexOfStartCommit + maxRollbacks;
+
+            if (indexOfEndCommit > indexOfInitialCommit) {
+                System.err.println("The number of rollbacks is greater than the history of this branch.");
+                App.systemExit(99);
+            }
+
+            endCommitHash = commitsHashList.get(indexOfEndCommit);
+
+        } else {
+
+            if (endCommit.equals(GitUtils.INITIAL_COMMIT)) {
+                endCommitHash = commitsHashList.get(indexOfInitialCommit);
+            } else {
+                endCommitHash = GitUtils.parseCommit(
+                        endCommit, originalGitBranch,
+                        commitsHashList, projectPath, commandExecutor);
+            }
+
+            maxRollbacks = commitsHashList.indexOf(endCommitHash) - indexOfStartCommit;
+        }
+
+        if (maxRollbacks < 0) {
+            System.err.println("Start commit is older than end commit.");
+            System.out.println("Tip: pitStat rolls back from the start commit towards the end commit");
+            App.systemExit(99);
+        }
     }
 
 
@@ -267,10 +324,11 @@ class MainWorker implements Worker {
         List<String> nameStatusList =
                 GitUtils.gitDiffNameStatus(currentCommitHash, parentCommitHash, projectPath, commandExecutor);
 
-        int hashMapCapacity = (int) (nameStatusList.size() * 1.3);
+        int hashMapCapacity = (int) (nameStatusList.size() * 1.35);
         changedFiles = new HashMap<>(hashMapCapacity);
 
         if (nameStatusList.size() == 0) {
+
             String noDifferenceOutput = "No difference between " +
                     (currentCommitHash.equals("") ? "staged changes" : currentCommitHash) +
                     " and " + parentCommitHash + "\n";

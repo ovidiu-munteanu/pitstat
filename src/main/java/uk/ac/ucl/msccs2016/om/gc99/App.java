@@ -12,7 +12,7 @@ public class App {
         String pitStatReportsPath = "target/pitstat-reports";
         boolean pitStatReportsPathRelative = true;
         boolean createTimestampFolder = true;
-        String startCommit = "";
+        String startCommit = "HEAD";
         String endCommit = null;
         int maxRollbacks = 1;
         int threadsNo = 1;
@@ -121,7 +121,7 @@ public class App {
                     String rollbacksString = null;
                     try {
                         rollbacksString = args[++i];
-                        if (rollbacksString.equals("max")) {
+                        if (rollbacksString.equals(GitUtils.MAX_VALUE)) {
                             maxRollbacks = Integer.MAX_VALUE;
                         } else {
                             maxRollbacks = Integer.valueOf(rollbacksString);
@@ -241,7 +241,7 @@ public class App {
         );
 
 
-        if (worker.validStartEndCommits()) worker.doWork();
+        worker.doWork();
 
         // shutdown in 1 minute
         if (shutdown) Runtime.getRuntime().exec(Utils.systemShutdownCommand(shutdownTimeout));
@@ -256,11 +256,11 @@ public class App {
 
     private static void checkCommitLength(String commit) {
         if (commit.length() < 4) {
-            System.err.println("The commit reference you entered is too short." +
+            System.err.println("The commit reference is too short." +
                     "\nTip: a commit reference is at least 4 characters long, e.g. HEAD");
             systemExit(99);
         } else if (commit.length() > 40) {
-            System.err.println("The commit reference you entered is too long." +
+            System.err.println("The commit reference is too long." +
                     "\nTip: a full commit hash is 40 characters long");
             systemExit(99);
         }

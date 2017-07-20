@@ -92,28 +92,28 @@ class Utils {
     }
 
 
-    static DiffOutput loadDiffOutput(String outputPath, String commitHash, Object o) {
-        return (DiffOutput) loadOutput(outputPath, commitHash, TYPE_DIFF_MACHINE_OUTPUT, o);
+    static DiffOutput loadDiffOutput(String outputPath, String commitHash, Object o, JSONHandler jsonHandler) {
+        return (DiffOutput) loadOutput(outputPath, commitHash, TYPE_DIFF_MACHINE_OUTPUT, o, jsonHandler);
     }
 
 
-    static MatrixOutput loadMatrixOutput(String outputPath, String commitHash, Object o) {
-        return (MatrixOutput) loadOutput(outputPath, commitHash, TYPE_MATRIX_MACHINE_OUTPUT, o);
+    static MatrixOutput loadMatrixOutput(String outputPath, String commitHash, Object o, JSONHandler jsonHandler) {
+        return (MatrixOutput) loadOutput(outputPath, commitHash, TYPE_MATRIX_MACHINE_OUTPUT, o, jsonHandler);
     }
 
 
-    static PitOutput loadPitOutput(String outputPath, String commitHash, Object o) {
-        return (PitOutput) loadOutput(outputPath, commitHash, TYPE_PIT_MACHINE_OUTPUT, o);
+    static PitOutput loadPitOutput(String outputPath, String commitHash, Object o, JSONHandler jsonHandler) {
+        return (PitOutput) loadOutput(outputPath, commitHash, TYPE_PIT_MACHINE_OUTPUT, o, jsonHandler);
     }
 
 
-    static Object loadOutput(String outputPath, String commitHash, String outputType, Object o) {
+    static Object loadOutput(String outputPath, String commitHash, String outputType, Object o, JSONHandler jsonHandler) {
         String outputFileName = getOutputFileName(commitHash, outputType, outputPath);
         boolean isZipFile = getExtension(outputFileName).equals(ZIP_EXTENSION);
         try {
             return isZipFile ?
-                    new JSONHandler().loadFromJSON(zipFileInputStream(outputFileName), o) :
-                    new JSONHandler().loadFromJSON(outputFileName, o);
+                    jsonHandler.loadFromJSON(zipFileInputStream(outputFileName), o) :
+                    jsonHandler.loadFromJSON(outputFileName, o);
         } catch (Exception e) {
             System.err.println("The " + outputType + " output file for commit " + commitHash + " could not be loaded.");
         }

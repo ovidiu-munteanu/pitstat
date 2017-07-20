@@ -3,36 +3,82 @@ package uk.ac.ucl.msccs2016.om.gc99;
 import java.util.List;
 
 
-@SuppressWarnings("Duplicates")
-class GitUtils {
+class GitUtils implements GitInterface {
 
-    private static final String GIT_OPTIONS_PLACEHOLDER = "<gitOptions>";
 
-    private static final String GIT_REV_LIST_COMMAND = "git <gitOptions> rev-list <revListOptions> ";
-    private static final String REV_LIST_ALL_OPTION = " --all ";
+    static boolean indexNotEmpty(String projectPath, CommandExecutor commandExecutor) {
+        String gitOptions = GIT_OPTION_PATH + projectPath;
+        String diffOptions = DIFF_OPTION_NAME_ONLY + DIFF_OPTION_CACHED;
 
-    private static final String GIT_REV_PARSE_COMMAND = "git <gitOptions> rev-parse <revParseOptions> ";
-    private static final String REV_PARSE_OPTION_ABBREV_REF = " --abbrev-ref ";
+        String command = buildGitDiffCommand(gitOptions, diffOptions, "", "", "", "");
 
-    private static final String GIT_CHECKOUT_COMMAND = "git <gitOptions> checkout <checkoutOptions> ";
-    private static final String CHECKOUT_OPTION_NEW_BRANCH = " -b ";
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
 
-    private static final String GIT_BRANCH_COMMAND = "git <gitOptions> branch <branchOptions> ";
-    private static final String BRANCH_DELETE_OPTION = " -D ";
-    private static final String BRANCH_FORCE_OPTION = " -f ";
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
 
-    private static final String GIT_RESET_COMMAND = "git <gitOptions> reset <resetOptions> ";
-    private static final String RESET_HARD_OPTION = " --hard ";
+        return commandExecutor.getStandardOutput().size() > 0;
+    }
 
-    private static final String GIT_DIFF_COMMAND = "git <gitOptions> diff <diffOptions> <oldCommit> <oldFile> <newCommit> <newFileName>";
 
-    private static final String GIT_OPTION_NO_PAGER = " --no-pager ";
-    private static final String GIT_OPTION_PATH = " -C ";
+    static boolean untrackedNotEmpty(String projectPath, CommandExecutor commandExecutor) {
+        String gitOptions = GIT_OPTION_PATH + projectPath;
+        String lsFilesOptions = LS_FILES_OTHERS_OPTION + LS_FILES_EXCLUDE_STANDARD_OPTION;
 
-    private static final String DIFF_OPTION_NAME_STATUS = " --name-status ";
-    private static final String DIFF_OPTION_NO_CONTEXT = " -U0 ";
-    private static final String DIFF_OPTION_FIND_COPIES = " -C ";
-    private static final String DIFF_OPTION_FIND_COPIES_HARDER = " -C -C ";
+        String command = GIT_LS_FILES_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
+        command = command.replace("<lsFilesOptions>", lsFilesOptions);
+
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
+
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
+
+        return commandExecutor.getStandardOutput().size() > 0;
+    }
+
+
+    static String commitIndex(String projectPath, CommandExecutor commandExecutor){
+        return commitIndex(COMMIT_MESSAGE_PITSTAT_INDEX, projectPath, commandExecutor);
+    }
+
+
+    static String commitUntracked(String projectPath, CommandExecutor commandExecutor){
+        stageAllUntracked(projectPath, commandExecutor);
+        return commitIndex(COMMIT_MESSAGE_PITSTAT_UNTRACKED, projectPath, commandExecutor);
+    }
+
+
+    static String commitIndex(String commitMessage, String projectPath, CommandExecutor commandExecutor) {
+        String gitOptions = GIT_OPTION_PATH + projectPath;
+        String commitOptions = COMMIT_MESSAGE_OPTION + commitMessage;
+
+        String command = GIT_COMMIT_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
+        command = command.replace("<commitOptions>", commitOptions);
+
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
+
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
+
+        return getCommitHash(HEAD, projectPath, commandExecutor);
+    }
+
+
+    static void stageAllUntracked(String projectPath, CommandExecutor commandExecutor){
+        String gitOptions = GIT_OPTION_PATH + projectPath;
+
+        String command = GIT_ADD_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
+        command = command.replace("<addOptions>", ADD_OPTION_ALL);
+
+        //commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
+
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
+    }
 
 
     static String parseCommit(String commit, String originalGitBranch, List<String> commitsHashList,
@@ -132,21 +178,6 @@ class GitUtils {
     }
 
 
-    static void checkoutOriginalBranch(String originalGitBranch, String projectPath, CommandExecutor commandExecutor) {
-        String gitOptions = GIT_OPTION_PATH + projectPath;
-
-        String command = GIT_CHECKOUT_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<checkoutOptions>", "");
-        command = command + originalGitBranch;
-
-//        commandExecutor.execute(command, true);
-        commandExecutor.execute(command);
-
-//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
-//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
-    }
-
-
     static void deletePitStatBranch(String pitStatBranch, String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
 
@@ -162,13 +193,54 @@ class GitUtils {
     }
 
 
-    static void rollBackTo(String commit, String projectPath, CommandExecutor commandExecutor) {
+    static void gitResetSoftTo(String commit, String projectPath, CommandExecutor commandExecutor) {
+        gitResetTo(commit, RESET_SOFT_OPTION, projectPath, commandExecutor);
+    }
 
+
+    static void gitResetMixedTo(String commit, String projectPath, CommandExecutor commandExecutor) {
+        gitResetTo(commit, RESET_MIXED_OPTION, projectPath, commandExecutor);
+    }
+
+
+    static void gitResetHardTo(String commit, String projectPath, CommandExecutor commandExecutor) {
+        gitResetTo(commit, RESET_HARD_OPTION, projectPath, commandExecutor);
+    }
+
+
+    static  void gitResetTo(String commit, String resetOption, String projectPath, CommandExecutor commandExecutor){
         String gitOptions = GIT_OPTION_PATH + projectPath;
 
         String command = GIT_RESET_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<resetOptions>", RESET_HARD_OPTION);
+        command = command.replace("<resetOptions>", resetOption);
         command = command + commit;
+
+//        commandExecutor.execute(command, true);
+        commandExecutor.execute(command);
+
+//        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
+//        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
+
+    }
+
+
+    static void checkoutOriginalBranch(String originalGitBranch, String projectPath, CommandExecutor commandExecutor) {
+        gitCheckout(originalGitBranch, projectPath, commandExecutor);
+    }
+
+
+    static void gitCheckout(String target, String projectPath, CommandExecutor commandExecutor) {
+        gitCheckout(target, "", projectPath, commandExecutor);
+    }
+
+
+    static void gitCheckout(String target, String checkoutOptions, String projectPath, CommandExecutor commandExecutor) {
+
+        String gitOptions = GIT_OPTION_PATH + projectPath;
+
+        String command = GIT_CHECKOUT_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
+        command = command.replace("<checkoutOptions>", checkoutOptions);
+        command = command + target;
 
 //        commandExecutor.execute(command, true);
         commandExecutor.execute(command);

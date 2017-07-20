@@ -13,26 +13,33 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                 - by default set to '<project-path>/target/pitstat-reports'
 
     --start-commit, -SC     most recent commit to start pitstat analysis from
-                                - by default set to index (staged changes)
-                                - <commit> may be specified as a short or long hash or in the format HEAD~[<value>]
-                                  where <value> may be any positive integer number greater than zero, not exceeding
-                                  the commit history of the current branch
+                                - by default set to HEAD
+                                - <commit> may be:
+                                    - a short or long commit hash
+                                    - specified in the format HEAD[~<value>] where <value> may be any positive integer
+                                    greater than zero, not exceeding the commit history of the current branch
+                                    - the keyword "INDEX" - analysis will start from index (staged changes)
+                                    - the keyword "UNTRACKED" - analysis will start from the untracked changes in the
+                                    working tree
 
     --end-commit,   -EC     oldest commit to finish pitstat analysis with
                                 - by default set to parent commit of start commit
-                                - <commit> may be specified as a short or long hash or in the format HEAD~[<value>]
-                                  where <value> may be any positive integer number greater than zero, not exceeding
-                                  the commit history of the current branch; alternatively, instead of a value, the
-                                  keyword 'initial-commit' may be used, in which case pitstat will roll back through
-                                  the entire branch history until the initial commit is reached
+                                - <commit> may be:
+                                    - a short or long hash
+                                    - specified in the format HEAD[~<value>] where <value> may be:
+                                        - a positive integer greater than zero, not exceeding the commit history of
+                                        the current branch
+                                        - the keyword 'initial-commit' - pitstat will roll back through the entire
+                                        branch history until the initial commit is reached
                             NOTE: may not be used together with rollbacks option
 
     --rollbacks,    -R      run pitstat analysis rolling back specified number of commits from start commit
                                 - by default set to 1 (parent of start commit)
-                                - <value> may be any positive integer number greater than zero, not exceeding the
-                                  commit history of the current branch; alternatively, the keyword 'max' may be
-                                  used, in which case pitstat will roll back through the entire branch history until
-                                  the initial commit is reached
+                                - <value> may be:
+                                    - a positive integer greater than zero, not exceeding the commit history of the
+                                    current branch
+                                    - the keyword 'max' - pitstat will roll back through the entire branch history
+                                    until the initial commit is reached
                             NOTE: may not be used together with end commit option
 
     --threads,      -T      number of threads to use for pit mutation testing
