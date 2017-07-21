@@ -1,6 +1,6 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
-public interface GitInterface {
+interface Git {
 
     String INDEX = "INDEX";
     String UNTRACKED = "UNTRACKED";

@@ -72,6 +72,7 @@ class Utils {
         return directoryContents;
     }
 
+
     static void deleteNewTempFiles(List<String> oldTempFiles) {
         try {
             Files.list(Paths.get(TEMP_DIRECTORY))
@@ -147,6 +148,7 @@ class Utils {
             jsonHandler.saveToJSON(object, changesMachineOutputPath);
         }
     }
+
 
     static OutputStream zipFileOutputStream(String rootPath, String sourceFile) throws IOException {
         String zipFile = sourceFile.replace(Utils.getExtension(sourceFile), ZIP_EXTENSION);

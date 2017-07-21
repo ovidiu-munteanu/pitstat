@@ -16,8 +16,11 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                 - by default set to HEAD
                                 - <commit> may be:
                                     - a short or long commit hash
-                                    - specified in the format HEAD[~<value>] where <value> may be a positive integer
+                                    - specified in the format HEAD[~<value>] where <value> may be any positive integer
                                     greater than zero, not exceeding the commit history of the current branch
+                                    - the keyword "INDEX" - analysis will start from index (staged changes)
+                                    - the keyword "UNTRACKED" - analysis will start from the untracked changes in the
+                                    working tree
 
     --end-commit,   -EC     oldest commit to finish pitstat analysis with
                                 - by default set to parent commit of start commit

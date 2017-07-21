@@ -63,9 +63,8 @@ class CommandExecutor {
             System.out.println("$ " + String.join(" ", splitCommand));
 
         try {
-            ProcessBuilder processBuilder = new ProcessBuilder(splitCommand);
 
-            // processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+            ProcessBuilder processBuilder = new ProcessBuilder(splitCommand);
 
             Process process = processBuilder.start();
 

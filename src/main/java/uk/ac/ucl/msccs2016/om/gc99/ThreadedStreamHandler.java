@@ -40,7 +40,6 @@ class ThreadedStreamHandler extends Thread {
     List<String> getOutputBuffer() {
         return outputBuffer;
     }
-
 }
 
 

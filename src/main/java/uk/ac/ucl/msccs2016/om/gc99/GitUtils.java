@@ -3,7 +3,7 @@ package uk.ac.ucl.msccs2016.om.gc99;
 import java.util.List;
 
 
-class GitUtils implements GitInterface {
+class GitUtils implements Git {
 
 
     static boolean indexNotEmpty(String projectPath, CommandExecutor commandExecutor) {

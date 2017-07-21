@@ -243,14 +243,19 @@ public class App {
 
         worker.doWork();
 
-        // shutdown in 1 minute
-        if (shutdown) Runtime.getRuntime().exec(Utils.systemShutdownCommand(shutdownTimeout));
+
+        if (shutdown) {
+            String shutdownCommand = Utils.systemShutdownCommand(shutdownTimeout);
+            Runtime.getRuntime().exec(shutdownCommand);
+        }
+
         System.exit(0);
     }
 
 
     private static void printHelp() {
-        System.out.print(Utils.getResourceFileAsString("help.txt"));
+        String help = Utils.getResourceFileAsString("help.txt");
+        System.out.print(help);
     }
 
 

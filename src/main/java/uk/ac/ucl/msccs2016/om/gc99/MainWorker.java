@@ -46,43 +46,29 @@ class MainWorker implements Worker {
     private final JSONHandler jsonHandler;
     private final DocumentBuilder documentBuilder;
 
-    private final String projectPath;
-    private final String pitStatReportsPath;
-    private final boolean pitStatReportsPathRelative;
-    private final boolean createTimestampDirectory;
-    private final boolean humanOutput;
-    private final boolean zipOutput;
-    private final boolean machineOutput;
-    private final String startCommit;
-    private final String endCommit;
+    private final String projectPath, pitStatReportsPath;
+    private final boolean pitStatReportsPathRelative, createTimestampDirectory;
+    private final boolean humanOutput, zipOutput, machineOutput;
+    private final String startCommit, endCommit;
     private final int threadsNo;
-
     private int maxRollbacks;
 
-    private boolean resetIndex;
-    private boolean resetUntracked;
+    private boolean resetIndex, resetUntracked;
+    private String headCommitHash, indexCommitHash, untrackedCommitHash;
 
     private List<String> commitsHashList;
-    private String startCommitHash;
-    private String endCommitHash;
+    private String originalGitBranch, startCommitHash, endCommitHash;
     private int indexOfStartCommit;
 
-    private String originalGitBranch;
-
-    private String childCommitHash;
-    private String currentCommitHash;
-    private String parentCommitHash;
-
-    private String startTime;
-    private String outputTime;
-
-    private String outputPath;
+    private String outputPath, startTime, outputTime;
 
     private StringBuilder diffHumanOutput;
 
     private boolean isEndCommit;
     private HashMap<String, ChangedFile> changedFiles;
     private ChangedMutations changedMutations;
+
+    private String childCommitHash, currentCommitHash, parentCommitHash;
 
     private PitOutput childPitOutput, currentPitOutput;
     private DiffOutput childDiffOutput, currentDiffOutput;
@@ -139,15 +125,14 @@ class MainWorker implements Worker {
 
     void doWork() throws Exception {
 
+        originalGitBranch = GitUtils.getGitBranch(GitUtils.HEAD, projectPath, commandExecutor);
         String pitStatBranch = GitUtils.checkoutPitStatBranch(startTime, projectPath, commandExecutor);
 
         validateBoundaryCommits();
 
-
         if (pitStatReportsPathRelative || createTimestampDirectory) {
 
-            outputPath = Utils.createOutputDirectory(
-                    pitStatReportsPath, pitStatReportsPathRelative,
+            outputPath = Utils.createOutputDirectory(pitStatReportsPath, pitStatReportsPathRelative,
                     startTime, createTimestampDirectory, projectPath);
 
             if (outputPath == null) App.systemExit(98);
@@ -156,25 +141,34 @@ class MainWorker implements Worker {
             outputPath = pitStatReportsPath;
         }
 
-
-        if (indexOfStartCommit > 0) GitUtils.gitResetHardTo(startCommitHash, projectPath, commandExecutor);
-
+        if (indexOfStartCommit > 0) GitUtils.gitCheckout(startCommitHash, projectPath, commandExecutor);
 
         int currentCommitIndex = indexOfStartCommit;
         int parentCommitIndex = currentCommitIndex + 1;
         childCommitHash = null;
         currentCommitHash = startCommitHash;
-        parentCommitHash = parentCommitIndex == commitsHashList.size() ?
-                "currently at initial commit -> no parent hash" : commitsHashList.get(parentCommitIndex);
+        parentCommitHash = parentCommitIndex != commitsHashList.size() ?
+                commitsHashList.get(parentCommitIndex) : "currently at initial commit -> no parent hash";
 
         int currentRollback = 0;
 
         do {
             System.out.println("\nRollback: " + currentRollback++);
 
-            String currentCommitOutput = "Current commit hash: " + (currentCommitHash.length() > 0 ?
-                    currentCommitHash : "currently at staged changes (not committed) -> no hash") + "\n";
-            String parentCommitOutput = "Parent  commit hash: " + parentCommitHash + "\n\n";
+            String currentCommitOutput = "Current commit hash: ";
+            String parentCommitOutput = "Parent  commit hash: ";
+
+            if (currentCommitHash.equals(untrackedCommitHash)) {
+                currentCommitOutput += "untracked changes (not committed) -> no hash\n";
+                parentCommitOutput += "staged changes (not committed) -> no hash\n\n";
+            } else {
+                if (currentCommitHash.equals(indexCommitHash)) {
+                    currentCommitOutput += "staged changes (not committed) -> no hash\n";
+                } else {
+                    currentCommitOutput += currentCommitHash + "\n";
+                }
+                parentCommitOutput += parentCommitHash + "\n\n";
+            }
 
             System.out.print(currentCommitOutput);
             System.out.print(parentCommitOutput);
@@ -182,6 +176,7 @@ class MainWorker implements Worker {
             isEndCommit = currentCommitHash.equals(endCommitHash);
 
             if (isEndCommit) {
+                // TODO adjust currentCommitHash for untracked and index
                 System.out.println("Currently at end commit for this run (" +
                         currentCommitHash + ") -> skipping git diff\n");
             } else {
@@ -214,7 +209,8 @@ class MainWorker implements Worker {
                 currentCommitHash = commitsHashList.get(++currentCommitIndex);
                 parentCommitHash = ++parentCommitIndex == commitsHashList.size() ?
                         "currently at initial commit -> no parent hash" : commitsHashList.get(parentCommitIndex);
-                GitUtils.gitResetHardTo(currentCommitHash, projectPath, commandExecutor);
+
+                GitUtils.gitCheckout(currentCommitHash, projectPath, commandExecutor);
 
                 childDiffOutput = currentDiffOutput;
                 childPitOutput = currentPitOutput;
@@ -222,10 +218,10 @@ class MainWorker implements Worker {
 
         } while (!isEndCommit && currentRollback <= maxRollbacks);
 
+        GitUtils.gitCheckout(startCommitHash, projectPath, commandExecutor);
 
         if (resetUntracked) GitUtils.gitResetMixedTo(GitUtils.HEAD_PARENT, projectPath, commandExecutor);
         if (resetIndex) GitUtils.gitResetSoftTo(GitUtils.HEAD_PARENT, projectPath, commandExecutor);
-
 
         GitUtils.checkoutOriginalBranch(originalGitBranch, projectPath, commandExecutor);
         GitUtils.deletePitStatBranch(pitStatBranch, projectPath, commandExecutor);
@@ -234,18 +230,21 @@ class MainWorker implements Worker {
 
     private void validateBoundaryCommits() {
 
-        startCommitHash = null;
-
         if (startCommit.equals(GitUtils.INDEX))
 
             if (GitUtils.indexNotEmpty(projectPath, commandExecutor)) {
-                startCommitHash = GitUtils.commitIndex(projectPath, commandExecutor);
+
+                headCommitHash = GitUtils.getCommitHash(GitUtils.HEAD, projectPath, commandExecutor);
+
+                indexCommitHash = GitUtils.commitIndex(projectPath, commandExecutor);
                 resetIndex = true;
 
                 if (GitUtils.untrackedNotEmpty(projectPath, commandExecutor)) {
-                    startCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
+                    untrackedCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
                     resetUntracked = true;
                 }
+
+                startCommitHash = untrackedCommitHash == null ? indexCommitHash : untrackedCommitHash;
 
             } else {
                 System.err.println("The index is empty - there are no staged changes.");
@@ -256,13 +255,17 @@ class MainWorker implements Worker {
 
             if (GitUtils.untrackedNotEmpty(projectPath, commandExecutor)) {
 
+                headCommitHash = GitUtils.getCommitHash(GitUtils.HEAD, projectPath, commandExecutor);
+
                 if (GitUtils.indexNotEmpty(projectPath, commandExecutor)) {
-                    GitUtils.commitIndex(projectPath, commandExecutor);
+                    indexCommitHash = GitUtils.commitIndex(projectPath, commandExecutor);
                     resetIndex = true;
                 }
 
-                startCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
+                untrackedCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
                 resetUntracked = true;
+
+                startCommitHash = untrackedCommitHash;
 
             } else {
                 System.err.println("There are no untracked changes on the working tree.");
@@ -270,7 +273,6 @@ class MainWorker implements Worker {
             }
 
 
-        originalGitBranch = GitUtils.getGitBranch(GitUtils.HEAD, projectPath, commandExecutor);
         commitsHashList = GitUtils.getCommitsHashList(projectPath, commandExecutor);
 
 
