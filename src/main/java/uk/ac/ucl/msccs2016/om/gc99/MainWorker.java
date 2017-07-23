@@ -54,7 +54,7 @@ class MainWorker implements Worker {
     private int maxRollbacks;
 
     private boolean resetIndex, resetUntracked;
-    private String headCommitHash, indexCommitHash, untrackedCommitHash;
+    private String indexCommitHash, notStagedCommitHash, tempHead;
 
     private List<String> commitsHashList;
     private String originalGitBranch, startCommitHash, endCommitHash;
@@ -125,7 +125,7 @@ class MainWorker implements Worker {
 
     void doWork() throws Exception {
 
-        originalGitBranch = GitUtils.getGitBranch(GitUtils.HEAD, projectPath, commandExecutor);
+        originalGitBranch = GitUtils.getGitBranch(Git.HEAD, projectPath, commandExecutor);
         String pitStatBranch = GitUtils.checkoutPitStatBranch(startTime, projectPath, commandExecutor);
 
         validateBoundaryCommits();
@@ -155,20 +155,8 @@ class MainWorker implements Worker {
         do {
             System.out.println("\nRollback: " + currentRollback++);
 
-            String currentCommitOutput = "Current commit hash: ";
-            String parentCommitOutput = "Parent  commit hash: ";
-
-            if (currentCommitHash.equals(untrackedCommitHash)) {
-                currentCommitOutput += "untracked changes (not committed) -> no hash\n";
-                parentCommitOutput += "staged changes (not committed) -> no hash\n\n";
-            } else {
-                if (currentCommitHash.equals(indexCommitHash)) {
-                    currentCommitOutput += "staged changes (not committed) -> no hash\n";
-                } else {
-                    currentCommitOutput += currentCommitHash + "\n";
-                }
-                parentCommitOutput += parentCommitHash + "\n\n";
-            }
+            String currentCommitOutput = "Current commit hash: " + hashToOutput(currentCommitHash, true) + "\n";
+            String parentCommitOutput = "Parent  commit hash: " + hashToOutput(parentCommitHash, true) + "\n\n";
 
             System.out.print(currentCommitOutput);
             System.out.print(parentCommitOutput);
@@ -176,9 +164,8 @@ class MainWorker implements Worker {
             isEndCommit = currentCommitHash.equals(endCommitHash);
 
             if (isEndCommit) {
-                // TODO adjust currentCommitHash for untracked and index
                 System.out.println("Currently at end commit for this run (" +
-                        currentCommitHash + ") -> skipping git diff\n");
+                        hashToOutput(currentCommitHash) + ") -> skipping git diff\n");
             } else {
                 diffHumanOutput = new StringBuilder();
                 diffHumanOutput.append(currentCommitOutput);
@@ -202,7 +189,10 @@ class MainWorker implements Worker {
 
             Utils.deleteNewTempFiles(oldTempFiles);
 
-            if (childCommitHash != null) runPitMatrixAnalysis();
+            if (childCommitHash != null) {
+                changedMutations = null;
+                runPitMatrixAnalysis();
+            }
 
             if (!isEndCommit) {
                 childCommitHash = currentCommitHash;
@@ -218,10 +208,10 @@ class MainWorker implements Worker {
 
         } while (!isEndCommit && currentRollback <= maxRollbacks);
 
-        GitUtils.gitCheckout(startCommitHash, projectPath, commandExecutor);
+        GitUtils.gitCheckout(tempHead, projectPath, commandExecutor);
 
-        if (resetUntracked) GitUtils.gitResetMixedTo(GitUtils.HEAD_PARENT, projectPath, commandExecutor);
-        if (resetIndex) GitUtils.gitResetSoftTo(GitUtils.HEAD_PARENT, projectPath, commandExecutor);
+        if (resetUntracked) GitUtils.gitResetMixedTo(Git.HEAD_PARENT, projectPath, commandExecutor);
+        if (resetIndex) GitUtils.gitResetSoftTo(Git.HEAD_PARENT, projectPath, commandExecutor);
 
         GitUtils.checkoutOriginalBranch(originalGitBranch, projectPath, commandExecutor);
         GitUtils.deletePitStatBranch(pitStatBranch, projectPath, commandExecutor);
@@ -230,45 +220,37 @@ class MainWorker implements Worker {
 
     private void validateBoundaryCommits() {
 
-        if (startCommit.equals(GitUtils.INDEX))
+        if (startCommit.equals(Git.INDEX))
 
             if (GitUtils.indexNotEmpty(projectPath, commandExecutor)) {
 
-                headCommitHash = GitUtils.getCommitHash(GitUtils.HEAD, projectPath, commandExecutor);
-
-                indexCommitHash = GitUtils.commitIndex(projectPath, commandExecutor);
+                tempHead = startCommitHash = indexCommitHash = GitUtils.commitIndex(projectPath, commandExecutor);
                 resetIndex = true;
 
-                if (GitUtils.untrackedNotEmpty(projectPath, commandExecutor)) {
-                    untrackedCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
+                if (GitUtils.notStagedNotEmpty(projectPath, commandExecutor)) {
+                    tempHead = notStagedCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
                     resetUntracked = true;
                 }
-
-                startCommitHash = untrackedCommitHash == null ? indexCommitHash : untrackedCommitHash;
 
             } else {
                 System.err.println("The index is empty - there are no staged changes.");
                 App.systemExit(99);
             }
 
-        else if (startCommit.equals(GitUtils.UNTRACKED))
+        else if (startCommit.equals(Git.NOT_STAGED))
 
-            if (GitUtils.untrackedNotEmpty(projectPath, commandExecutor)) {
-
-                headCommitHash = GitUtils.getCommitHash(GitUtils.HEAD, projectPath, commandExecutor);
+            if (GitUtils.notStagedNotEmpty(projectPath, commandExecutor)) {
 
                 if (GitUtils.indexNotEmpty(projectPath, commandExecutor)) {
                     indexCommitHash = GitUtils.commitIndex(projectPath, commandExecutor);
                     resetIndex = true;
                 }
 
-                untrackedCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
+                tempHead = startCommitHash = notStagedCommitHash = GitUtils.commitUntracked(projectPath, commandExecutor);
                 resetUntracked = true;
 
-                startCommitHash = untrackedCommitHash;
-
             } else {
-                System.err.println("There are no untracked changes on the working tree.");
+                System.err.println("There are no changes not yet added to the staging area.");
                 App.systemExit(99);
             }
 
@@ -301,7 +283,7 @@ class MainWorker implements Worker {
 
         } else {
 
-            if (endCommit.equals(GitUtils.INITIAL_COMMIT)) {
+            if (endCommit.equals(Git.INITIAL_COMMIT)) {
                 endCommitHash = commitsHashList.get(indexOfInitialCommit);
             } else {
                 endCommitHash = GitUtils.parseCommit(
@@ -323,17 +305,16 @@ class MainWorker implements Worker {
     private void runGitDiff() throws IOException {
 
         // git diff name-status between previous and current commit
-        List<String> nameStatusList =
-                GitUtils.gitDiffNameStatus(currentCommitHash, parentCommitHash, projectPath, commandExecutor);
+        List<String> nameStatusList = GitUtils.gitDiffNameStatus(currentCommitHash, parentCommitHash,
+                projectPath, commandExecutor);
 
         int hashMapCapacity = (int) (nameStatusList.size() * 1.35);
         changedFiles = new HashMap<>(hashMapCapacity);
 
         if (nameStatusList.size() == 0) {
 
-            String noDifferenceOutput = "No difference between " +
-                    (currentCommitHash.equals("") ? "staged changes" : currentCommitHash) +
-                    " and " + parentCommitHash + "\n";
+            String noDifferenceOutput = "No difference between " + hashToOutput(currentCommitHash) +
+                    " and " + hashToOutput(parentCommitHash) + "\n";
 
             diffHumanOutput.append(noDifferenceOutput);
             System.out.println(noDifferenceOutput);
@@ -573,8 +554,8 @@ class MainWorker implements Worker {
                     // copied or renamed
                 }
 
-                ChangedFile changedFileEntry =
-                        new ChangedFile(newFile, changedFile, diffStatus, mergedLines, newLinesMap, oldLinesMap);
+                ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines,
+                        newLinesMap, oldLinesMap);
 
                 if (!diffStatus.equals(DIFF_STATUS_DELETED)) {
                     changedFiles.put(newFile, changedFileEntry);
@@ -590,8 +571,8 @@ class MainWorker implements Worker {
         System.out.println(modifiedFilesOutput);
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern(TIMESTAMP_PATTERN));
-        String commitHash = currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash;
 
+        String commitHash = hashToFileName(currentCommitHash);
 
         if (humanOutput) {
             // Write git diff human readable output
@@ -607,7 +588,7 @@ class MainWorker implements Worker {
             }
         }
 
-        currentDiffOutput = new DiffOutput(parentCommitHash, currentCommitHash, changedFiles);
+        currentDiffOutput = new DiffOutput(hashToOutput(currentCommitHash), hashToOutput(parentCommitHash), changedFiles);
 
         //noinspection Duplicates
         if (machineOutput) {
@@ -816,14 +797,14 @@ class MainWorker implements Worker {
 
         }
 
-        currentPitOutput = new PitOutput(currentCommitHash, mutatedFiles);
+
+        currentPitOutput = new PitOutput(hashToOutput(currentCommitHash), mutatedFiles);
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
 
         String pitOutputFileName = PIT_MACHINE_OUTPUT_BASE_FILE_NAME;
         pitOutputFileName = pitOutputFileName.replace(TIMESTAMP_PLACEHOLDER, outputTime);
-        pitOutputFileName = pitOutputFileName.replace(HASH_PLACEHOLDER,
-                currentCommitHash.equals("") ? "staged-changes-no-hash" : currentCommitHash);
+        pitOutputFileName = pitOutputFileName.replace(HASH_PLACEHOLDER, hashToFileName(currentCommitHash));
 
         Utils.saveMachineOutput(currentPitOutput, pitOutputFileName, outputPath, zipOutput, jsonHandler);
     }
@@ -833,7 +814,7 @@ class MainWorker implements Worker {
 
         int[][] pitMatrix = new int[SIZE_PIT_MATRIX][SIZE_PIT_MATRIX];
 
-        int maxMutationsNo = buildPitMatrix(childCommitHash, currentCommitHash, pitMatrix);
+        int maxMutationsNo = buildPitMatrix(hashToOutput(childCommitHash), hashToOutput(currentCommitHash), pitMatrix);
 
 //        if (maxMutationsNo == -1) App.systemExit(99);
         if (maxMutationsNo == -1) return;
@@ -845,7 +826,7 @@ class MainWorker implements Worker {
 
 
         outputTime = LocalDateTime.now().format(DateTimeFormatter.ofPattern(TIMESTAMP_PATTERN));
-        String commitHash = childCommitHash.equals("") ? "staged-changes-no-hash" : childCommitHash;
+        String commitHash = hashToFileName(childCommitHash);
 
 
         if (humanOutput) {
@@ -863,7 +844,8 @@ class MainWorker implements Worker {
         }
 
         // Write machine readable output file with results of matrix analysis
-        MatrixOutput matrixOutput = new MatrixOutput(childCommitHash, currentCommitHash, pitMatrix);
+        MatrixOutput matrixOutput = new MatrixOutput(hashToOutput(childCommitHash),
+                hashToOutput(currentCommitHash), pitMatrix);
 
         // noinspection Duplicates
         if (machineOutput) {
@@ -1275,8 +1257,8 @@ class MainWorker implements Worker {
 
 // Append description of contents
         stringBuilder.append("Pit mutations statistics matrix:\n");
-        stringBuilder.append("New commit: " + childCommitHash + "\n");
-        stringBuilder.append("Old commit: " + currentCommitHash + "\n");
+        stringBuilder.append("New commit: " + hashToOutput(childCommitHash) + "\n");
+        stringBuilder.append("Old commit: " + hashToOutput(currentCommitHash) + "\n");
         stringBuilder.append("\n");
 
 
@@ -1436,5 +1418,31 @@ class MainWorker implements Worker {
         pitPlugin.appendChild(pitConfiguration);
 
         return pitPlugin;
+    }
+
+
+    private String hashToOutput(String commitHash) {
+        return hashToOutput(commitHash, false);
+    }
+
+
+    private String hashToOutput(String commitHash, boolean longOutput) {
+        if (commitHash.equals(notStagedCommitHash))
+            return "not staged changes" + (longOutput ? " (not committed -> no hash)" : "");
+        else if (commitHash.equals(indexCommitHash))
+            return "staged changes" + (longOutput ? " (not committed -> no hash)" : "");
+        else
+            return commitHash;
+    }
+
+
+    private String hashToFileName(String commitHash) {
+        if (commitHash.equals(notStagedCommitHash))
+            return "not-staged-changes-no-hash";
+        else if (commitHash.equals(indexCommitHash))
+            return "staged-changes-no-hash";
+        else
+            return commitHash;
+
     }
 }

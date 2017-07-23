@@ -12,7 +12,7 @@ class GitUtils implements Git {
 
         String command = buildGitDiffCommand(gitOptions, diffOptions, "", "", "", "");
 
-        //commandExecutor.execute(command, true);
+//        commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
 //        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));
@@ -22,14 +22,14 @@ class GitUtils implements Git {
     }
 
 
-    static boolean untrackedNotEmpty(String projectPath, CommandExecutor commandExecutor) {
+    static boolean notStagedNotEmpty(String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
-        String lsFilesOptions = LS_FILES_OTHERS_OPTION + LS_FILES_EXCLUDE_STANDARD_OPTION;
+        String addOptions = ADD_OPTION_ALL + ADD_OPTION_DRY_RUN;
 
-        String command = GIT_LS_FILES_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
-        command = command.replace("<lsFilesOptions>", lsFilesOptions);
+        String command = GIT_ADD_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
+        command = command.replace("<addOptions>", addOptions);
 
-        //commandExecutor.execute(command, true);
+//        commandExecutor.execute(command, true);
         commandExecutor.execute(command);
 
 //        System.out.println("Standard output:\n" + String.join("\n", commandExecutor.getStandardOutput()));

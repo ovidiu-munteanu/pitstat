@@ -2,8 +2,8 @@ package uk.ac.ucl.msccs2016.om.gc99;
 
 interface Git {
 
-    String INDEX = "INDEX";
-    String UNTRACKED = "UNTRACKED";
+    String INDEX = "index";
+    String NOT_STAGED = "not-staged";
     String HEAD = "HEAD";
     String HEAD_PARENT = HEAD + "~";
 
@@ -17,10 +17,6 @@ interface Git {
 
     String GIT_OPTION_NO_PAGER = " --no-pager ";
     String GIT_OPTION_PATH = " -C ";
-
-    String GIT_LS_FILES_COMMAND = GIT_COMMAND + " ls-files <lsFilesOptions> ";
-    String LS_FILES_OTHERS_OPTION = " --others ";
-    String LS_FILES_EXCLUDE_STANDARD_OPTION = " --exclude-standard ";
 
     String GIT_REV_LIST_COMMAND = GIT_COMMAND + " rev-list <revListOptions> ";
     String REV_LIST_ALL_OPTION = " --all ";
@@ -50,6 +46,7 @@ interface Git {
 
     String GIT_ADD_COMMAND = GIT_COMMAND + " add <addOptions> ";
     String ADD_OPTION_ALL = " -A ";
+    String ADD_OPTION_DRY_RUN = " -n ";
 
     String GIT_COMMIT_COMMAND = GIT_COMMAND + " commit <commitOptions> ";
     String COMMIT_MESSAGE_OPTION = " -m ";

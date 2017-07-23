@@ -6,11 +6,11 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                         [ ( [--no-human | -NH] [--zip-output | -Z] ) | ( --no-machine | -NM ) ]
                                         [--no-timestamp | -NT] [--shutdown | -S] [--help | -H]
 
-    --project-path, -PP     path to project you wish to run pistat analysis on
+    --project-path, -PP     path to project you wish to run pitstat analysis on
                                 - by default set to current path
 
     --reports-path, -RP     output path for pitstat reports
-                                - by default set to '<project-path>/target/pitstat-reports'
+                                - by default set to "<project-path>/target/pitstat-reports"
 
     --start-commit, -SC     most recent commit to start pitstat analysis from
                                 - by default set to HEAD
@@ -18,6 +18,8 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                     - a short or long commit hash
                                     - specified in the format HEAD[~<value>] where <value> may be a positive integer
                                     greater than zero, not exceeding the commit history of the current branch
+                                    - the keyword "index" - analysis will start from index (staged changes)
+                                    - the keyword "not-staged" - analysis will start from the changes not yet staged
 
     --end-commit,   -EC     oldest commit to finish pitstat analysis with
                                 - by default set to parent commit of start commit
@@ -26,7 +28,7 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                     - specified in the format HEAD[~<value>] where <value> may be:
                                         - a positive integer greater than zero, not exceeding the commit history of
                                         the current branch
-                                        - the keyword 'initial-commit' - pitstat will roll back through the entire
+                                        - the keyword "initial-commit" - pitstat will roll back through the entire
                                         branch history until the initial commit is reached
                             NOTE: may not be used together with rollbacks option
 
@@ -35,7 +37,7 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                 - <value> may be:
                                     - a positive integer greater than zero, not exceeding the commit history of the
                                     current branch
-                                    - the keyword 'max' - pitstat will roll back through the entire branch history
+                                    - the keyword "max" - pitstat will roll back through the entire branch history
                                     until the initial commit is reached
                             NOTE: may not be used together with end commit option
 

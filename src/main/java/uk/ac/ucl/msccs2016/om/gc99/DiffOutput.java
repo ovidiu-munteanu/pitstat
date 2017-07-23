@@ -6,7 +6,7 @@ class DiffOutput {
     String currentCommitHash, parentCommitHash;
     HashMap<String, ChangedFile> changedFiles;
 
-    DiffOutput(String parentCommitHash, String currentCommitHash,
+    DiffOutput(String currentCommitHash, String parentCommitHash,
                HashMap<String, ChangedFile> changedFiles) {
         this.currentCommitHash = currentCommitHash;
         this.parentCommitHash = parentCommitHash;
