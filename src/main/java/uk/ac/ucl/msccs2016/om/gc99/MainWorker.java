@@ -36,6 +36,7 @@ import java.util.Map;
 
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.getNameOnly;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.paddingSpaces;
+import static uk.ac.ucl.msccs2016.om.gc99.Utils.saveMachineOutput;
 
 
 class MainWorker implements Worker {
@@ -1347,20 +1348,53 @@ class MainWorker implements Worker {
 
         Document xmlDoc = documentBuilder.parse(repositoryPom);
 
-        Element project = (Element) xmlDoc.getFirstChild();
-
+        Element project = (Element) xmlDoc.getElementsByTagName("project").item(0);
 
         Element build = (Element) project.getElementsByTagName("build").item(0);
         Element plugins = (Element) build.getElementsByTagName("plugins").item(0);
         NodeList pluginsList = plugins.getElementsByTagName("plugin");
+
         for (int i = 0; i < pluginsList.getLength(); i++) {
-            Node plugin = pluginsList.item(i);
-            String groupId = ((Element) plugin).getElementsByTagName("groupId").item(0).getTextContent();
-            if (groupId.equals("org.pitest")) {
+
+            Element plugin = (Element) pluginsList.item(i);
+
+            String artifactId = plugin.getElementsByTagName("artifactId").item(0).getTextContent();
+
+            if (artifactId.equals("pitest-maven")) {
+
                 plugins.removeChild(plugin);
-                break;
+                i--;
+
+            } else if (artifactId.equals("maven-surefire-plugin")) {
+
+                NodeList configurationContainer = plugin.getElementsByTagName("configuration");
+                Element configuration;
+
+                if (configurationContainer.getLength() > 0) {
+                    configuration = (Element) configurationContainer.item(0);
+                } else {
+                    configuration = xmlDoc.createElement("configuration");
+                    plugin.appendChild(configuration);
+                }
+
+                NodeList excludesContainer = configuration.getElementsByTagName("excludes");
+                Element excludes;
+
+                if (excludesContainer.getLength() > 0) {
+                    excludes = (Element) excludesContainer.item(0);
+                } else {
+                    excludes = xmlDoc.createElement("excludes");
+                    configuration.appendChild(excludes);
+                }
+
+                Element exclude = xmlDoc.createElement("exclude");
+                exclude.appendChild(xmlDoc.createTextNode("**/HashSetValuedHashMapTest.java"));
+                excludes.appendChild(exclude);
+
             }
         }
+
+
         plugins.appendChild(pitPlugin(xmlDoc));
 
 
