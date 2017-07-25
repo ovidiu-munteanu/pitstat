@@ -18,6 +18,10 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -36,7 +40,6 @@ import java.util.Map;
 
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.getNameOnly;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.paddingSpaces;
-import static uk.ac.ucl.msccs2016.om.gc99.Utils.saveMachineOutput;
 
 
 class MainWorker implements Worker {
@@ -46,6 +49,7 @@ class MainWorker implements Worker {
     private final InvocationRequest invocationRequest;
     private final JSONHandler jsonHandler;
     private final DocumentBuilder documentBuilder;
+    private final XPath xPath;
 
     private final String projectPath, pitStatReportsPath;
     private final boolean pitStatReportsPathRelative, createTimestampDirectory;
@@ -107,6 +111,7 @@ class MainWorker implements Worker {
         invocationRequest.setBatchMode(true);
 
         documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+        xPath = XPathFactory.newInstance().newXPath();
 
         jsonHandler = new JSONHandler(PRETTY_PRINTING);
 
@@ -164,6 +169,7 @@ class MainWorker implements Worker {
 
             isEndCommit = currentCommitHash.equals(endCommitHash);
 
+            currentDiffOutput = null;
             if (isEndCommit) {
                 System.out.println("Currently at end commit for this run (" +
                         hashToOutput(currentCommitHash) + ") -> skipping git diff\n");
@@ -177,11 +183,14 @@ class MainWorker implements Worker {
 
             List<String> oldTempFiles = Utils.listTempFiles();
 
+            currentPitOutput = null;
             Thread thread = new Thread(() -> {
                 try {
                     runPitMutationTesting();
                 } catch (Exception e) {
-                    System.err.println("runPitMutationTesting(): An Exception was thrown");
+                    System.err.println();
+                    System.err.println("Pitest Mutations Testing - Commit " + currentCommitHash);
+                    System.err.println("runPitMutationTesting(): has thrown and exception - stack trace is included below:");
                     e.printStackTrace();
                 }
             });
@@ -191,8 +200,16 @@ class MainWorker implements Worker {
             Utils.deleteNewTempFiles(oldTempFiles);
 
             if (childCommitHash != null) {
-                changedMutations = null;
-                runPitMatrixAnalysis();
+                if (childPitOutput != null && currentPitOutput != null) {
+                    changedMutations = null;
+                    runPitMatrixAnalysis();
+                } else {
+                    System.err.println();
+                    System.err.println("Pit Matrix Analysis - Child   (new) commit " + childCommitHash);
+                    System.err.println("                      Current (old) commit " + currentCommitHash);
+                    System.err.println("Skipping analysis: childPitOutput   == " + childPitOutput);
+                    System.err.println("                   currentPitOutput == " + childPitOutput);
+                }
             }
 
             if (!isEndCommit) {
@@ -201,7 +218,9 @@ class MainWorker implements Worker {
                 parentCommitHash = ++parentCommitIndex == commitsHashList.size() ?
                         "currently at initial commit -> no parent hash" : commitsHashList.get(parentCommitIndex);
 
-                GitUtils.gitCheckout(currentCommitHash, projectPath, commandExecutor);
+                thread = new Thread(() -> GitUtils.gitCheckout(currentCommitHash, projectPath, commandExecutor));
+                thread.start();
+                thread.join();
 
                 childDiffOutput = currentDiffOutput;
                 childPitOutput = currentPitOutput;
@@ -748,6 +767,9 @@ class MainWorker implements Worker {
             if (mutation.currentCommitData.detected && killingTestElement.length() > 0) {
                 MutatedFile.KillingTest killingTest = new MutatedFile.KillingTest(true);
 
+                if (!killingTestElement.contains("("))
+                    killingTestElement = parseMalformedKillingTestElement(killingTestElement);
+
                 killingTest.testFile.fileName = MAVEN_JAVA_TEST_SRC_PATH + "/" +
                         killingTestElement.substring(
                                 killingTestElement.lastIndexOf("(") + 1,
@@ -759,11 +781,11 @@ class MainWorker implements Worker {
                     killingTest.testFile.fileName_old = changedFile.oldFileName;
                     killingTest.testFile.diffStatus = changedFile.diffStatus;
                 } else {
-//                    killingTest.testFile.fileName_old = killingTest.testFile.fileName;
                     killingTest.testFile.diffStatus = STATUS_UNCHANGED;
                 }
 
                 killingTest.testFile.testMethod = killingTestElement.substring(0, killingTestElement.lastIndexOf("("));
+
 
                 mutation.currentCommitData.killingTest = killingTest;
             }
@@ -808,6 +830,13 @@ class MainWorker implements Worker {
         pitOutputFileName = pitOutputFileName.replace(HASH_PLACEHOLDER, hashToFileName(currentCommitHash));
 
         Utils.saveMachineOutput(currentPitOutput, pitOutputFileName, outputPath, zipOutput, jsonHandler);
+    }
+
+    private String parseMalformedKillingTestElement(String killingTestElement) {
+        String topLevelDomain = killingTestElement.substring(0, killingTestElement.indexOf("."));
+        int lastIndexOfTopLevelDomain = killingTestElement.lastIndexOf(topLevelDomain);
+        return killingTestElement.substring(0, lastIndexOfTopLevelDomain) + "UNKNOWN_METHOD_NAME" +
+                "(" + killingTestElement.substring(lastIndexOfTopLevelDomain) + ")";
     }
 
 
@@ -1342,21 +1371,18 @@ class MainWorker implements Worker {
     }
 
 
-    private File createTempPom(String repoPath, String pomFile) throws IOException, SAXException, TransformerException {
+    private File createTempPom(String repoPath, String pomFile) throws IOException, SAXException, TransformerException, XPathExpressionException {
 
         File repositoryPom = new File(Paths.get(repoPath, pomFile).toString());
 
         Document xmlDoc = documentBuilder.parse(repositoryPom);
 
-        Element project = (Element) xmlDoc.getElementsByTagName("project").item(0);
+        Node plugins = (Node) xPath.compile("/project/build/plugins").evaluate(xmlDoc, XPathConstants.NODE);
+        NodeList pluginList = (NodeList) xPath.compile("/project/build/plugins/plugin").evaluate(xmlDoc, XPathConstants.NODESET);
 
-        Element build = (Element) project.getElementsByTagName("build").item(0);
-        Element plugins = (Element) build.getElementsByTagName("plugins").item(0);
-        NodeList pluginsList = plugins.getElementsByTagName("plugin");
+        for (int i = 0; i < pluginList.getLength(); i++) {
 
-        for (int i = 0; i < pluginsList.getLength(); i++) {
-
-            Element plugin = (Element) pluginsList.item(i);
+            Element plugin = (Element) pluginList.item(i);
 
             String artifactId = plugin.getElementsByTagName("artifactId").item(0).getTextContent();
 
@@ -1364,8 +1390,9 @@ class MainWorker implements Worker {
 
                 plugins.removeChild(plugin);
                 i--;
-
-            } else if (artifactId.equals("maven-surefire-plugin")) {
+//                break;
+            }
+            else if (artifactId.equals("maven-surefire-plugin")) {
 
                 NodeList configurationContainer = plugin.getElementsByTagName("configuration");
                 Element configuration;
@@ -1387,29 +1414,26 @@ class MainWorker implements Worker {
                     configuration.appendChild(excludes);
                 }
 
-                Element exclude = xmlDoc.createElement("exclude");
-                exclude.appendChild(xmlDoc.createTextNode("**/HashSetValuedHashMapTest.java"));
-                excludes.appendChild(exclude);
+//                Element exclude = xmlDoc.createElement("exclude");
+//                exclude.appendChild(xmlDoc.createTextNode("**/org/apache/commons/collections4/multimap/HashSetValuedHashMapTest.java"));
+//                excludes.appendChild(exclude);
 
+                Element exclude = xmlDoc.createElement("exclude");
+                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
+                excludes.appendChild(exclude);
             }
         }
-
-
         plugins.appendChild(pitPlugin(xmlDoc));
 
 
-        NodeList dependenciesList = project.getElementsByTagName("dependencies");
-        for (int i = 0; i < dependenciesList.getLength(); i++) {
-            Element dependencies = (Element) dependenciesList.item(i);
-            NodeList dependencyList = dependencies.getElementsByTagName("dependency");
-            for (int j = 0; j < dependencyList.getLength(); j++) {
-                Node dependency = dependencyList.item(j);
-                String groupId = ((Element) dependency).getElementsByTagName("groupId").item(0).getTextContent();
-                if (groupId.equals("junit")) {
-                    Node version = ((Element) dependency).getElementsByTagName("version").item(0);
-                    version.setTextContent("4.12");
-                    break;
-                }
+        NodeList dependencyList = (NodeList) xPath.compile("/project/dependencies/dependency").evaluate(xmlDoc, XPathConstants.NODESET);
+        for (int i = 0; i < dependencyList.getLength(); i++) {
+            Node dependency = dependencyList.item(i);
+            String artifactId = ((Element) dependency).getElementsByTagName("artifactId").item(0).getTextContent();
+            if (artifactId.equals("junit")) {
+                Node version = ((Element) dependency).getElementsByTagName("version").item(0);
+                version.setTextContent("4.12");
+                break;
             }
         }
 
