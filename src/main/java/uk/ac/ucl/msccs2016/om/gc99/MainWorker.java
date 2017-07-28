@@ -394,7 +394,7 @@ class MainWorker implements Worker {
 
                 if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED + DIFF_STATUS_DELETED).contains(diffStatus)) {
 
-                    // If the file is added or deleted it would be superfluous to also list all its lines
+                    // If the file is added, copied or deleted it would be superfluous to list all its lines
                     // as added or deleted
                     diffHumanOutput.append("\n");
                     System.out.println();
@@ -418,8 +418,8 @@ class MainWorker implements Worker {
                     // If the file was copied or renamed but not modified (100% similarity) then the while loop above
                     // will have reached the end of the diff output so we need to continue with the next changed file
                     if (!diffOutputIterator.hasNext()) {
-                        ChangedFile changedFileEntry =
-                                new ChangedFile(newFile, changedFile, diffStatus, mergedLines, newLinesMap, oldLinesMap);
+                        ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus,
+                                mergedLines, newLinesMap, oldLinesMap);
                         changedFiles.put(changedFile, changedFileEntry);
                         continue;
                     }
@@ -435,7 +435,6 @@ class MainWorker implements Worker {
                     newLinesMap.add(null);
                     oldLinesMap.add(null);
 
-//                    int diffOldPointer, diffOldLinesNo;
                     int diffNewPointer, diffNewLinesNo;
                     int oldFileLinePointer = 1, newFileLinePointer = 1, lineOffset = 0;
 
@@ -903,7 +902,7 @@ class MainWorker implements Worker {
         // First run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at each of the
         // mutations in the child commit against those in the parent commit.
         countMutations(childPitOutput, childCommitHash, true,
-                currentPitOutput, currentCommitHash, pitMatrix, childDiffOutput);
+                currentPitOutput, currentCommitHash, pitMatrix);
 
         // NOTE however that while this first run looks at every mutation that exists in the child commit, it does not
         // look at the mutations in the parent commit; this is because it only looks one way - i.e. it loops through
@@ -930,7 +929,7 @@ class MainWorker implements Worker {
         // Second run - count the mutation types (i.e. killed, survived, no coverage, etc.) by looking at the mutations
         // in the parent commit against those in the child commit
         countMutations(currentPitOutput, currentCommitHash, false,
-                childPitOutput, childCommitHash, pitMatrix, childDiffOutput);
+                childPitOutput, childCommitHash, pitMatrix);
 
         for (int i = 0; i < ROW_COL_TOTAL; i++)
             for (int j = 0; j < ROW_COL_TOTAL; j++) {
@@ -950,7 +949,7 @@ class MainWorker implements Worker {
 
     private void countMutations(PitOutput childPitOutput, String childCommitHash, boolean isChildCommit,
                                 PitOutput parentPitOutput, String parentCommitHash,
-                                int[][] pitMatrix, DiffOutput diffOutput) {
+                                int[][] pitMatrix) {
 
         String childFileName, childClassName, childMethodName, parentFileName, parentClassName, parentMethodName;
         MutatedFile childMutatedFile, parentMutatedFile;
@@ -959,12 +958,12 @@ class MainWorker implements Worker {
 
         boolean renamedFile;
 
-        for (Map.Entry<String, MutatedFile> newMutatedFileEntry : childPitOutput.mutatedFiles.entrySet()) {
+        for (Map.Entry<String, MutatedFile> childMutatedFileEntry : childPitOutput.mutatedFiles.entrySet()) {
 
-            childFileName = newMutatedFileEntry.getKey();
-            childMutatedFile = newMutatedFileEntry.getValue();
+            childFileName = childMutatedFileEntry.getKey();
+            childMutatedFile = childMutatedFileEntry.getValue();
 
-            ChangedFile diffChangedFile = diffOutput.changedFiles.getOrDefault(childFileName, null);
+            ChangedFile diffChangedFile = childDiffOutput.changedFiles.getOrDefault(childFileName, null);
 
             if (isChildCommit && diffChangedFile != null && diffChangedFile.diffStatus.equals(DIFF_STATUS_RENAMED)) {
                 parentFileName = diffChangedFile.oldFileName;
@@ -976,10 +975,10 @@ class MainWorker implements Worker {
 
             parentMutatedFile = parentPitOutput.mutatedFiles.get(parentFileName);
 
-            for (Map.Entry<String, MutatedFile.MutatedClass> newMutatedClassEntry : childMutatedFile.mutatedClasses.entrySet()) {
+            for (Map.Entry<String, MutatedFile.MutatedClass> childMutatedClassEntry : childMutatedFile.mutatedClasses.entrySet()) {
 
-                childClassName = newMutatedClassEntry.getKey();
-                childMutatedClass = newMutatedClassEntry.getValue();
+                childClassName = childMutatedClassEntry.getKey();
+                childMutatedClass = childMutatedClassEntry.getValue();
 
                 if (parentMutatedFile != null) {
                     parentClassName = renamedFile ?
@@ -1008,63 +1007,85 @@ class MainWorker implements Worker {
                     }
 
                     // For the current method, iterate through each of its mutations
-                    for (MutatedFile.Mutation newMutation : childMutatedMethod.mutations) {
+                    for (MutatedFile.Mutation childMutation : childMutatedMethod.mutations) {
 
                         // Initially, assume that the mutation does not exist in the old commit
                         int matrixRow = ROW_COL_NON_EXISTENT;
-                        MutatedFile.Mutation oldMutation = null;
+                        MutatedFile.Mutation parentMutation = null;
 
-                        // Check if the same mutated file, class and method was found in the old commit;
-                        // if this condition is not met, then the above assumption holds
-                        if (parentMutatedFile != null && parentMutatedClass != null && parentMutatedMethod != null) {
+                        if (isChildCommit) {
+                            // Check if the same mutated file, class and method was found in the parent commit;
+                            // if this condition is not met, then the above assumption holds
+                            if (parentMutatedFile != null && parentMutatedClass != null && parentMutatedMethod != null) {
 
-                            Iterator<MutatedFile.Mutation> oldMutationsIterator =
-                                    parentMutatedMethod.mutations.listIterator();
+                                Iterator<MutatedFile.Mutation> parentMutationsIterator =
+                                        parentMutatedMethod.mutations.listIterator();
 
-                            // If the condition is met, we still need to iterate through each of the
-                            // mutations from the old commit and see if the same one is found
-                            while (oldMutationsIterator.hasNext()) {
-                                MutatedFile.Mutation mutation = oldMutationsIterator.next();
+                                // If the condition is met, we still need to iterate through each of the
+                                // mutations from the parent commit and see if the same one is found
+                                while (parentMutationsIterator.hasNext()) {
+                                    MutatedFile.Mutation mutation = parentMutationsIterator.next();
 
-                                int newMutationOldLineNo = newMutation.currentCommitData.lineNo;
+                                    int childMutationOldLineNo = childMutation.currentCommitData.lineNo;
 
-                                if (diffChangedFile != null) {
-                                    int mapLineNo = diffChangedFile.newLinesMap.get(newMutation.currentCommitData.lineNo);
-                                    newMutationOldLineNo = diffChangedFile.mergedLines.get(mapLineNo).oldLineNo;
-                                }
+                                    if (diffChangedFile != null) {
+                                        try {
+                                            int mapLineNo = diffChangedFile.newLinesMap.get(childMutation.currentCommitData.lineNo);
+                                            childMutationOldLineNo = diffChangedFile.mergedLines.get(mapLineNo).oldLineNo;
+                                        } catch (Exception e) {
+                                            System.out.println("isChildCommit: " + isChildCommit);
+                                            System.out.println("childCommitHash" + childCommitHash);
+                                            System.out.println("parentCommitHash" + parentCommitHash);
 
-                                // TODO what happens if the line has been changed? i.e. lineDiffStatus is not the same?
+                                            System.out.println("childMutation.currentCommitData.lineNo: " + childMutation.currentCommitData.lineNo);
 
-                                boolean isSameMutation = newMutationOldLineNo == mutation.currentCommitData.lineNo &&
-                                        newMutation.currentCommitData.index.equals(mutation.currentCommitData.index) &&
-                                        newMutation.currentCommitData.mutator.equals(mutation.currentCommitData.mutator) &&
-                                        newMutation.currentCommitData.description.equals(mutation.currentCommitData.description);
+                                            System.out.println("childFileName: " + childFileName);
+                                            System.out.println("childClassName: " + childClassName);
+                                            System.out.println("childMethodName: " + childMethodName);
+                                            System.out.println("parentFileName: " + parentFileName);
+                                            System.out.println("parentClassName: " + parentClassName);
+                                            System.out.println("parentMethodName: " + parentMethodName);
+                                            e.printStackTrace();
 
-                                if (isSameMutation) {
-                                    // if the same mutation if found, then we need to add it to the
-                                    // relevant row in the statistics matrix
-                                    matrixRow = getMatrixRowCol(mutation.currentCommitData.pitStatus);
+                                            System.exit(0);
+                                        }
 
-                                    // we also need to store it for potential use in the changed mutations method
-                                    oldMutation = mutation;
+                                    }
 
-                                    // and if we're looking at the new commit against the old commit (i.e. this is
-                                    // the first run - see long explanation in buildPitMatrix method) remove the
-                                    // mutation from the hash map storing the old commit
-                                    if (isChildCommit) oldMutationsIterator.remove();
+                                    // TODO what happens if the line has been changed? i.e. lineDiffStatus is not the same?
 
-                                    // finally, break out of the loop since we found the mutation we were looking for
-                                    // NOTE: the assumption is that each mutation is unique
-                                    break;
+                                    boolean isSameMutation = childMutationOldLineNo == mutation.currentCommitData.lineNo &&
+                                            childMutation.currentCommitData.index.equals(mutation.currentCommitData.index) &&
+                                            childMutation.currentCommitData.mutator.equals(mutation.currentCommitData.mutator) &&
+                                            childMutation.currentCommitData.description.equals(mutation.currentCommitData.description);
+
+                                    if (isSameMutation) {
+                                        // if the same mutation if found, then we need to add it to the
+                                        // relevant row in the statistics matrix
+                                        matrixRow = getMatrixRowCol(mutation.currentCommitData.pitStatus);
+
+                                        // we also need to store it for potential use in the changed mutations method
+                                        parentMutation = mutation;
+
+                                        // and if we're looking at the new commit against the old commit (i.e. this is
+                                        // the first run - see long explanation in buildPitMatrix method) remove the
+                                        // mutation from the hash map storing the old commit
+                                        parentMutationsIterator.remove();
+
+                                        // finally, break out of the loop since we found the mutation we were looking for
+                                        // NOTE: the assumption is that each mutation is unique
+                                        break;
+                                    }
                                 }
                             }
                         }
 
+
                         // the columns in the statistics matrix correspond to the new commit and are therefore
                         // fully determined by the status of the mutation in the new commit
-                        int matrixCol = getMatrixRowCol(newMutation.currentCommitData.pitStatus);
+                        int matrixCol = getMatrixRowCol(childMutation.currentCommitData.pitStatus);
 
-                        String oldMethodDescription =
+                        String parentMethodDescription =
                                 parentMutatedMethod == null ? null : parentMutatedMethod.description;
 
                         // BIG NOTE: This method is used for both runs, i.e. new commit vs old commit AND
@@ -1084,7 +1105,7 @@ class MainWorker implements Worker {
                             if (matrixRow != matrixCol)
                                 addChangedMutation(childCommitHash, parentCommitHash, diffChangedFile, matrixCol,
                                         childFileName, childClassName, childMethodName, childMutatedMethod.description,
-                                        newMutation.getClone(), oldMutation, oldMethodDescription);
+                                        childMutation.getClone(), parentMutation, parentMethodDescription);
                         } else {
                             // if we are in the second run however, we are effectively looking at the transposed
                             // statistics matrix and therefore the meaning of the row and column variables is
@@ -1094,8 +1115,10 @@ class MainWorker implements Worker {
                             if (matrixRow != matrixCol)
                                 addChangedMutation(childCommitHash, parentCommitHash, diffChangedFile, ROW_COL_NON_EXISTENT,
                                         childFileName, childClassName, childMethodName, childMutatedMethod.description,
-                                        newMutation.getClone(), oldMutation, oldMethodDescription);
+                                        childMutation.getClone(), parentMutation, parentMethodDescription);
                         }
+
+
                     }
                     if (isChildCommit && parentMutatedMethod != null && parentMutatedMethod.mutations.size() == 0)
                         parentMutatedClass.mutatedMethods.remove(parentMethodName);
@@ -1389,39 +1412,39 @@ class MainWorker implements Worker {
             if (artifactId.equals("pitest-maven")) {
 
                 plugins.removeChild(plugin);
-                i--;
-//                break;
+//                i--;
+                break;
             }
-            else if (artifactId.equals("maven-surefire-plugin")) {
-
-                NodeList configurationContainer = plugin.getElementsByTagName("configuration");
-                Element configuration;
-
-                if (configurationContainer.getLength() > 0) {
-                    configuration = (Element) configurationContainer.item(0);
-                } else {
-                    configuration = xmlDoc.createElement("configuration");
-                    plugin.appendChild(configuration);
-                }
-
-                NodeList excludesContainer = configuration.getElementsByTagName("excludes");
-                Element excludes;
-
-                if (excludesContainer.getLength() > 0) {
-                    excludes = (Element) excludesContainer.item(0);
-                } else {
-                    excludes = xmlDoc.createElement("excludes");
-                    configuration.appendChild(excludes);
-                }
-
+//            else if (artifactId.equals("maven-surefire-plugin")) {
+//
+//                NodeList configurationContainer = plugin.getElementsByTagName("configuration");
+//                Element configuration;
+//
+//                if (configurationContainer.getLength() > 0) {
+//                    configuration = (Element) configurationContainer.item(0);
+//                } else {
+//                    configuration = xmlDoc.createElement("configuration");
+//                    plugin.appendChild(configuration);
+//                }
+//
+//                NodeList excludesContainer = configuration.getElementsByTagName("excludes");
+//                Element excludes;
+//
+//                if (excludesContainer.getLength() > 0) {
+//                    excludes = (Element) excludesContainer.item(0);
+//                } else {
+//                    excludes = xmlDoc.createElement("excludes");
+//                    configuration.appendChild(excludes);
+//                }
+//
+////                Element exclude = xmlDoc.createElement("exclude");
+////                exclude.appendChild(xmlDoc.createTextNode("**/org/apache/commons/collections4/multimap/HashSetValuedHashMapTest.java"));
+////                excludes.appendChild(exclude);
+//
 //                Element exclude = xmlDoc.createElement("exclude");
-//                exclude.appendChild(xmlDoc.createTextNode("**/org/apache/commons/collections4/multimap/HashSetValuedHashMapTest.java"));
+//                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
 //                excludes.appendChild(exclude);
-
-                Element exclude = xmlDoc.createElement("exclude");
-                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
-                excludes.appendChild(exclude);
-            }
+//            }
         }
         plugins.appendChild(pitPlugin(xmlDoc));
 
