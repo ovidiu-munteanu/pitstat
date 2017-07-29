@@ -24,7 +24,6 @@ import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -392,6 +391,9 @@ class MainWorker implements Worker {
                 List<ChangedFile.LineOfCode> mergedLines = null;
                 List<Integer> newLinesMap = null, oldLinesMap = null;
 
+
+                boolean notJar = false;
+
                 if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED + DIFF_STATUS_DELETED).contains(diffStatus)) {
 
                     // If the file is added, copied or deleted it would be superfluous to list all its lines
@@ -399,9 +401,14 @@ class MainWorker implements Worker {
                     diffHumanOutput.append("\n");
                     System.out.println();
 
-                } else if ((DIFF_STATUS_MODIFIED + DIFF_STATUS_RENAMED).contains(diffStatus)) {
+                } else if ((DIFF_STATUS_MODIFIED + DIFF_STATUS_RENAMED).contains(diffStatus) &&
+                        !Utils.getExtension(newFile).equals(".jar")) {
 
-                    List<String> mapFileLines = Files.readAllLines(Paths.get(projectPath, newFile), StandardCharsets.UTF_8);
+                    notJar = true;
+
+//                    List<String> mapFileLines = Files.readAllLines(Paths.get(projectPath, newFile), StandardCharsets.ISO_8859_1);
+                    List<String> mapFileLines = Utils.readAllLines(Paths.get(projectPath, newFile));
+
                     mapFileLines.add(0, null);
                     int mapFileLinePointer = 1;
 
@@ -566,6 +573,7 @@ class MainWorker implements Worker {
                             ""));
                     System.out.print(mapFileLinesOutput);
 
+
                 } else {
 
                     // TODO handle other file types of file changes?
@@ -573,13 +581,15 @@ class MainWorker implements Worker {
                     // copied or renamed
                 }
 
-                ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines,
-                        newLinesMap, oldLinesMap);
+                if (notJar) {
+                    ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines,
+                            newLinesMap, oldLinesMap);
 
-                if (!diffStatus.equals(DIFF_STATUS_DELETED)) {
-                    changedFiles.put(newFile, changedFileEntry);
-                } else {
-                    changedFiles.put(changedFile, changedFileEntry);
+                    if (!diffStatus.equals(DIFF_STATUS_DELETED)) {
+                        changedFiles.put(newFile, changedFileEntry);
+                    } else {
+                        changedFiles.put(changedFile, changedFileEntry);
+                    }
                 }
             }
         }

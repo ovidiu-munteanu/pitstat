@@ -123,7 +123,7 @@ class GitUtils implements Git {
             return getCommitHash(commit, projectPath, commandExecutor);
         }
 
-        if (commit.length() == 7 && shortRevExists(commit, commitsHashList))
+        if (commit.length() > 6 && commit.length() < 40 && shortRevExists(commit, commitsHashList))
             return getCommitHash(commit, projectPath, commandExecutor);
 
         if (commit.length() == 40 && commitsHashList.contains(commit)) return commit;

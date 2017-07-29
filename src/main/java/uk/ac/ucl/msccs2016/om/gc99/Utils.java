@@ -15,6 +15,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -312,5 +314,15 @@ class Utils {
             shutdownCommand = "shutdown -s -t " + (timeout * 60);
 
         return shutdownCommand;
+    }
+
+    static List<String> readAllLines(Path path) throws IOException {
+        List<String> allLines = new ArrayList<>();
+        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(Files.newInputStream(path)));
+        while(bufferedReader.ready()){
+            allLines.add(bufferedReader.readLine());
+        }
+        bufferedReader.close();
+        return allLines;
     }
 }
