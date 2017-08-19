@@ -5,6 +5,10 @@ public class MatrixOutput {
     String parentCommitHash;
     int[][] pitMatrix;
 
+    public MatrixOutput(){
+
+    }
+
     public MatrixOutput(String currentCommitHash, String parentCommitHash, int[][] pitMatrix) {
         this.currentCommitHash = currentCommitHash;
         this.parentCommitHash = parentCommitHash;

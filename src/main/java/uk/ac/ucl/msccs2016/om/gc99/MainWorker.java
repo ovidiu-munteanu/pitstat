@@ -392,19 +392,21 @@ class MainWorker implements Worker {
                 List<Integer> newLinesMap = null, oldLinesMap = null;
 
 
-                boolean notJar = false;
+                boolean fileIsJar = !diffStatus.equals(DIFF_STATUS_DELETED) && Utils.getExtension(newFile).equals(".jar");
 
-                if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED + DIFF_STATUS_DELETED).contains(diffStatus)) {
 
-                    // If the file is added, copied or deleted it would be superfluous to list all its lines
-                    // as added or deleted
+                if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED + DIFF_STATUS_DELETED).contains(diffStatus) || fileIsJar) {
+
+                    // If the file is added, copied or deleted it would be superfluous to list all its lines as added
+                    // or deleted so the line diff is skipped.
+
+                    // There have also been found situations where the changed file is a jar and not a source file.
+                    // In this case it would also be superfluous to run a line diff.
+
                     diffHumanOutput.append("\n");
                     System.out.println();
 
-                } else if ((DIFF_STATUS_MODIFIED + DIFF_STATUS_RENAMED).contains(diffStatus) &&
-                        !Utils.getExtension(newFile).equals(".jar")) {
-
-                    notJar = true;
+                } else if ((DIFF_STATUS_MODIFIED + DIFF_STATUS_RENAMED).contains(diffStatus)) {
 
 //                    List<String> mapFileLines = Files.readAllLines(Paths.get(projectPath, newFile), StandardCharsets.ISO_8859_1);
                     List<String> mapFileLines = Utils.readAllLines(Paths.get(projectPath, newFile));
@@ -581,15 +583,13 @@ class MainWorker implements Worker {
                     // copied or renamed
                 }
 
-                if (notJar) {
-                    ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines,
-                            newLinesMap, oldLinesMap);
+                ChangedFile changedFileEntry = new ChangedFile(newFile, changedFile, diffStatus, mergedLines,
+                        newLinesMap, oldLinesMap);
 
-                    if (!diffStatus.equals(DIFF_STATUS_DELETED)) {
-                        changedFiles.put(newFile, changedFileEntry);
-                    } else {
-                        changedFiles.put(changedFile, changedFileEntry);
-                    }
+                if (!diffStatus.equals(DIFF_STATUS_DELETED)) {
+                    changedFiles.put(newFile, changedFileEntry);
+                } else {
+                    changedFiles.put(changedFile, changedFileEntry);
                 }
             }
         }
@@ -859,7 +859,8 @@ class MainWorker implements Worker {
         if (maxMutationsNo == -1) return;
 
 
-        String formattedPitMatrixOutput = formatPitMatrixOutput(pitMatrix, maxMutationsNo);
+        String formattedPitMatrixOutput = formatPitMatrixOutput(pitMatrix, maxMutationsNo,
+                hashToOutput(childCommitHash), hashToOutput(currentCommitHash));
 
         System.out.println(formattedPitMatrixOutput);
 
@@ -1309,7 +1310,7 @@ class MainWorker implements Worker {
     }
 
 
-    private String formatPitMatrixOutput(int[][] pitMatrix, int maxValue) {
+    static String formatPitMatrixOutput(int[][] pitMatrix, int maxValue, String newCommit, String oldCommit) {
 
         int paddingSpacesNo;
 
@@ -1320,8 +1321,8 @@ class MainWorker implements Worker {
 
 // Append description of contents
         stringBuilder.append("Pit mutations statistics matrix:\n");
-        stringBuilder.append("New commit: " + hashToOutput(childCommitHash) + "\n");
-        stringBuilder.append("Old commit: " + hashToOutput(currentCommitHash) + "\n");
+        stringBuilder.append("New commit: " + newCommit + "\n");
+        stringBuilder.append("Old commit: " + oldCommit + "\n");
         stringBuilder.append("\n");
 
 
