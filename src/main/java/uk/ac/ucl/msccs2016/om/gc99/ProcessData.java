@@ -12,16 +12,18 @@ import org.jfree.data.statistics.DefaultBoxAndWhiskerCategoryDataset;
 import org.jfree.ui.ApplicationFrame;
 import org.jfree.ui.RefineryUtilities;
 
-import java.awt.*;
+import java.awt.Font;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static uk.ac.ucl.msccs2016.om.gc99.MainWorker.formatPitMatrixOutput;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.paddingSpaces;
+import static uk.ac.ucl.msccs2016.om.gc99.Utils.zipFileInputStream;
 
 
 public class ProcessData implements Worker {
@@ -31,18 +33,69 @@ public class ProcessData implements Worker {
 
         ProcessData processData = new ProcessData();
 
-//        processData.listSkippedOutput(directory);
-//        processData.addMatrices(directory);
+        processData.countIdenticalCommits(directory);
 
-        processData.showChart(directory);
+        processData.listSkippedOutput(directory);
+        processData.addMatrices(directory);
+//        processData.showChart(directory);
+
     }
 
 
+    private final String MACHINE_OUTPUT_SUB_DIRECTORY = "machine";
+    private final String ANALYSIS_SUB_DIRECTORY = "analysis";
+
     private final JSONHandler jsonHandler;
+
+    private int noChangeCommits = 0;
+    private int noJavaChangeCommits = 0;
+
 
     private ProcessData() {
         jsonHandler = new JSONHandler(true);
     }
+
+
+    private void countIdenticalCommits(String directory) {
+
+        try {
+            Files.list(Paths.get(directory, MACHINE_OUTPUT_SUB_DIRECTORY))
+                    .forEach(file -> {
+                        if (file.getFileName().toString().contains(TYPE_DIFF_MACHINE_OUTPUT))
+                            checkDiff(file.toString());
+                    });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Commits with no changes in any files:  " + noChangeCommits);
+        System.out.println("Commits with no changes in Java code:  " + noJavaChangeCommits);
+
+    }
+
+
+    private void checkDiff(String diffFile) {
+        DiffOutput diffOutput = new DiffOutput();
+        try {
+
+            diffOutput = (DiffOutput) jsonHandler.loadFromJSON(zipFileInputStream(diffFile), diffOutput);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        if (diffOutput.changedFiles.isEmpty())
+            noChangeCommits++;
+        else {
+            boolean identicalSourceCode = true;
+            for (Map.Entry<String, ChangedFile> changedFileEntry : diffOutput.changedFiles.entrySet())
+                if (changedFileEntry.getKey().endsWith(".java")) {
+                    identicalSourceCode = false;
+                    break;
+                }
+            if (identicalSourceCode) noJavaChangeCommits++;
+        }
+    }
+
 
     private void listSkippedOutput(String directory) {
 
@@ -114,7 +167,7 @@ public class ProcessData implements Worker {
 
 
         String skippedOutputFileName = "skipped-output.txt";
-        Path skippedOutputPath = Paths.get(directory, "analysis", skippedOutputFileName);
+        Path skippedOutputPath = Paths.get(directory, ANALYSIS_SUB_DIRECTORY, skippedOutputFileName);
         try {
             Files.write(skippedOutputPath, skippedOutput.toString().getBytes());
         } catch (IOException e) {
@@ -133,7 +186,7 @@ public class ProcessData implements Worker {
         List<String> matrixFiles = new ArrayList<>();
 
         try {
-            Files.list(Paths.get(directory, "machine"))
+            Files.list(Paths.get(directory, MACHINE_OUTPUT_SUB_DIRECTORY))
                     .forEach(file -> {
                         if (file.getFileName().toString().contains(TYPE_MATRIX_MACHINE_OUTPUT))
                             matrixFiles.add(file.toString());
@@ -146,7 +199,7 @@ public class ProcessData implements Worker {
 
     }
 
-    private void addMatrices(String directory) throws IOException {
+    private void addMatrices(String directory) {
 
         List<String> matrixFiles = getMatrixFiles(directory);
 
@@ -155,7 +208,11 @@ public class ProcessData implements Worker {
         for (String matrixFile : matrixFiles) {
 
             MatrixOutput matrixOutput = new MatrixOutput();
-            matrixOutput = (MatrixOutput) jsonHandler.loadFromJSON(matrixFile, matrixOutput);
+            try {
+                matrixOutput = (MatrixOutput) jsonHandler.loadFromJSON(zipFileInputStream(matrixFile), matrixOutput);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
 
             for (int i = 0; i < SIZE_PIT_MATRIX; i++)
                 for (int j = 0; j < SIZE_PIT_MATRIX; j++)
@@ -171,7 +228,7 @@ public class ProcessData implements Worker {
 
 
         String pitMatrixSumFileName = "pit-matrix-sum.txt";
-        Path pitMatrixSumPath = Paths.get(directory, "analysis", pitMatrixSumFileName);
+        Path pitMatrixSumPath = Paths.get(directory, ANALYSIS_SUB_DIRECTORY, pitMatrixSumFileName);
         try {
             Files.write(pitMatrixSumPath, formattedPitMatrixOutput.getBytes());
         } catch (IOException e) {
@@ -184,7 +241,7 @@ public class ProcessData implements Worker {
 
 
     @SuppressWarnings("unchecked")
-    private BoxAndWhiskerCategoryDataset pitMatrixDataSet(String directory) throws IOException {
+    private BoxAndWhiskerCategoryDataset pitMatrixDataSet(String directory) {
 
         List<String> matrixFiles = getMatrixFiles(directory);
 
@@ -203,7 +260,11 @@ public class ProcessData implements Worker {
         for (String matrixFile : matrixFiles) {
 
             MatrixOutput matrixOutput = new MatrixOutput();
-            matrixOutput = (MatrixOutput) jsonHandler.loadFromJSON(matrixFile, matrixOutput);
+            try {
+                matrixOutput = (MatrixOutput) jsonHandler.loadFromJSON(zipFileInputStream(matrixFile), matrixOutput);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
 
 //            System.out.print(++j + "\t" + Paths.get(matrixFile).getFileName() + "\t");
 
@@ -220,7 +281,7 @@ public class ProcessData implements Worker {
 
 //            for (int i = 0; i < ROW_COL_TOTAL; i++)
 //            if (matrixOutput.pitMatrix[ROW_COL_TOTAL][0] > 0)
-                System.out.print(matrixOutput.pitMatrix[ROW_COL_TOTAL][5] + ",");
+//            System.out.print(matrixOutput.pitMatrix[ROW_COL_TOTAL][ROW_COL_NON_EXISTENT] + "\n");
 
 //            System.out.println();
         }
@@ -229,14 +290,14 @@ public class ProcessData implements Worker {
         DefaultBoxAndWhiskerCategoryDataset dataSet = new DefaultBoxAndWhiskerCategoryDataset();
 
 
-//        dataSet.add(removed, COL_HEADING_1[ROW_COL_NON_EXISTENT], "New Commits Statistics");
-//        dataSet.add(killed, COL_HEADING_1[ROW_COL_KILLED], "New Commits Statistics");
-//        dataSet.add(survived, COL_HEADING_1[ROW_COL_SURVIVED], "New Commits Statistics");
-//        dataSet.add(noCoverage, COL_HEADING_1[ROW_COL_NO_COVERAGE], "New Commits Statistics");
-//        dataSet.add(nonViable, COL_HEADING_1[ROW_COL_NON_VIABLE], "New Commits Statistics");
-//        dataSet.add(timedOut, COL_HEADING_1[ROW_COL_TIMED_OUT], "New Commits Statistics");
-//        dataSet.add(memError, COL_HEADING_1[ROW_COL_MEMORY_ERROR], "New Commits Statistics");
-//        dataSet.add(runError, COL_HEADING_1[ROW_COL_RUN_ERROR], "New Commits Statistics");
+        dataSet.add(removed, COL_HEADING_1[ROW_COL_NON_EXISTENT], "New Commits Statistics");
+        dataSet.add(killed, COL_HEADING_1[ROW_COL_KILLED], "New Commits Statistics");
+        dataSet.add(survived, COL_HEADING_1[ROW_COL_SURVIVED], "New Commits Statistics");
+        dataSet.add(noCoverage, COL_HEADING_1[ROW_COL_NO_COVERAGE], "New Commits Statistics");
+        dataSet.add(nonViable, COL_HEADING_1[ROW_COL_NON_VIABLE], "New Commits Statistics");
+        dataSet.add(timedOut, COL_HEADING_1[ROW_COL_TIMED_OUT], "New Commits Statistics");
+        dataSet.add(memError, COL_HEADING_1[ROW_COL_MEMORY_ERROR], "New Commits Statistics");
+        dataSet.add(runError, COL_HEADING_1[ROW_COL_RUN_ERROR], "New Commits Statistics");
 
 
         return dataSet;
@@ -279,25 +340,25 @@ public class ProcessData implements Worker {
     }
 
 
-    private void showChart(String directory) throws IOException {
+    private void showChart(String directory) {
 
-        pitMatrixDataSet(directory);
+//        pitMatrixDataSet(directory);
 
-//        BoxAndWhiskerChart mutationsChart =
-//                new BoxAndWhiskerChart("Mutations Box-and-Whisker Chart", pitMatrixDataSet(directory));
-//
-//        mutationsChart.pack();
-//
-//        RefineryUtilities.centerFrameOnScreen(mutationsChart);
-//
-//        mutationsChart.setVisible(true);
+        BoxAndWhiskerChart mutationsChart =
+                new BoxAndWhiskerChart("Mutations Box-and-Whisker Chart", pitMatrixDataSet(directory));
+
+        mutationsChart.pack();
+
+        RefineryUtilities.centerFrameOnScreen(mutationsChart);
+
+        mutationsChart.setVisible(true);
 
 
     }
 
 
     private static String getCommit(String outputFileName) {
-        return outputFileName.substring(20, 60);
+        return outputFileName.substring(outputFileName.lastIndexOf("-") + 1, outputFileName.lastIndexOf("."));
     }
 
 }
