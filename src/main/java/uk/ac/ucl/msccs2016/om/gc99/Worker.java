@@ -78,11 +78,11 @@ interface Worker {
             SIZE_PIT_MATRIX = 9;
 
      String[] COL_HEADING_0 = {"New commit", "Old commit"};
-     String[] COL_HEADING_1 = {"N/E", "KLD", "SVD", "N/C", "N/V", "T/O", "M/E", "R/E", "Totals"};
+     String[] COL_HEADING_1 = {"DEL", "KLD", "SVD", "N/C", "N/V", "T/O", "M/E", "R/E", "Totals"};
      String[] ROW_HEADINGS = {
-            "Old    N/E  ",
-            "commit KLD  ",
-            "       SVD  ",
+            "       NEW  ",
+            "Old    KLD  ",
+            "commit SVD  ",
             "       N/C  ",
             "       N/V  ",
             "       T/O  ",
