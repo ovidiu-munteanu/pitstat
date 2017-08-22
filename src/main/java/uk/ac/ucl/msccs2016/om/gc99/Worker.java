@@ -61,7 +61,7 @@ interface Worker {
 
      String CHANGES_MACHINE_OUTPUT_BASE_FILE_NAME = TYPE_CHANGES_MACHINE_OUTPUT + SEPARATOR + TIMESTAMP_PLACEHOLDER + SEPARATOR + HASH_PLACEHOLDER + JSON_EXTENSION;
 
-
+     String MVN_GOAL_CLEAN = " clean ";
      String MVN_GOAL_TEST = " test ";
      String MVN_GOAL_PITEST = " org.pitest:pitest-maven:mutationCoverage ";
 

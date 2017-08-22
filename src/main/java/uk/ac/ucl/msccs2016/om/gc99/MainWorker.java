@@ -1,10 +1,6 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
-import org.apache.maven.shared.invoker.DefaultInvocationRequest;
-import org.apache.maven.shared.invoker.DefaultInvoker;
-import org.apache.maven.shared.invoker.InvocationRequest;
-import org.apache.maven.shared.invoker.InvocationResult;
-import org.apache.maven.shared.invoker.Invoker;
+import org.apache.maven.shared.invoker.*;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -106,7 +102,6 @@ class MainWorker implements Worker {
         }
 
         invocationRequest = new DefaultInvocationRequest();
-        invocationRequest.setGoals(Arrays.asList(MVN_GOAL_TEST, MVN_GOAL_PITEST));
         invocationRequest.setBatchMode(true);
 
         documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
@@ -183,7 +178,8 @@ class MainWorker implements Worker {
             List<String> oldTempFiles = Utils.listTempFiles();
 
             currentPitOutput = null;
-            Thread thread = new Thread(() -> {
+            Thread thread = new Thread(() ->
+            {
                 try {
                     runPitMutationTesting();
                 } catch (Exception e) {
@@ -201,7 +197,22 @@ class MainWorker implements Worker {
             if (childCommitHash != null) {
                 if (childPitOutput != null && currentPitOutput != null) {
                     changedMutations = null;
-                    runPitMatrixAnalysis();
+
+                    thread = new Thread(() ->
+                    {
+                        try {
+                            runPitMatrixAnalysis();
+                        } catch (IOException e) {
+                            System.err.println();
+                            System.err.println("Pitest Mutations Testing - Commit " + currentCommitHash);
+                            System.err.println("runPitMatrixAnalysis(): has thrown and exception - stack trace is included below:\n");
+                            e.printStackTrace();
+                            System.exit(0);
+                        }
+                    });
+                    thread.start();
+                    thread.join();
+
                 } else {
                     System.err.println();
                     System.err.println("Pit Matrix Analysis - Child   (new) commit " + childCommitHash);
@@ -210,6 +221,20 @@ class MainWorker implements Worker {
                     System.err.println("                   currentPitOutput == " + childPitOutput);
                 }
             }
+
+            thread = new Thread(() ->
+            {
+                try {
+                    mavenClean();
+                } catch (Exception e) {
+                    System.err.println();
+                    System.err.println("Pitest Mutations Testing - Commit " + currentCommitHash);
+                    System.err.println("mavenClean(): has thrown and exception - stack trace is included below:");
+                    e.printStackTrace();
+                }
+            });
+            thread.start();
+            thread.join();
 
             if (!isEndCommit) {
                 childCommitHash = currentCommitHash;
@@ -234,6 +259,25 @@ class MainWorker implements Worker {
 
         GitUtils.checkoutOriginalBranch(originalGitBranch, projectPath, commandExecutor);
         GitUtils.deletePitStatBranch(pitStatBranch, projectPath, commandExecutor);
+    }
+
+
+    private void mavenClean() throws Exception {
+
+        File defaultPom = new File(Paths.get(projectPath, POM_FILE).toString());
+
+        invocationRequest.setPomFile(defaultPom);
+        invocationRequest.setGoals(Arrays.asList(MVN_GOAL_CLEAN));
+
+        InvocationResult result = mavenInvoker.execute(invocationRequest);
+
+        if (result.getExitCode() != 0) {
+            if (result.getExecutionException() != null) {
+                throw new Exception("Maven invocation failed.", result.getExecutionException());
+            } else {
+                throw new Exception("Maven invocation failed. Exit code: " + result.getExitCode());
+            }
+        }
     }
 
 
@@ -687,6 +731,8 @@ class MainWorker implements Worker {
         File tempPom = createTempPom(projectPath, POM_FILE);
 
         invocationRequest.setPomFile(tempPom);
+        invocationRequest.setGoals(Arrays.asList(MVN_GOAL_TEST, MVN_GOAL_PITEST));
+
         InvocationResult result = mavenInvoker.execute(invocationRequest);
 
         tempPom.delete();
@@ -704,6 +750,9 @@ class MainWorker implements Worker {
         String pitMutationsReport = Paths.get(projectPath, PIT_REPORTS_PATH, PIT_MUTATIONS_FILE).toString();
 
         Document xmlDoc = documentBuilder.parse(new File(pitMutationsReport));
+
+        Files.delete(Paths.get(pitMutationsReport));
+
         NodeList mutationsList = xmlDoc.getElementsByTagName("mutation");
 
         int hashMapCapacity = (int) (mutationsList.getLength() * 1.3);
@@ -839,6 +888,7 @@ class MainWorker implements Worker {
         pitOutputFileName = pitOutputFileName.replace(HASH_PLACEHOLDER, hashToFileName(currentCommitHash));
 
         Utils.saveMachineOutput(currentPitOutput, pitOutputFileName, outputPath, zipOutput, jsonHandler);
+
     }
 
     private String parseMalformedKillingTestElement(String killingTestElement) {
@@ -1045,8 +1095,8 @@ class MainWorker implements Worker {
                                             childMutationOldLineNo = diffChangedFile.mergedLines.get(mapLineNo).oldLineNo;
                                         } catch (Exception e) {
                                             System.out.println("isChildCommit: " + isChildCommit);
-                                            System.out.println("childCommitHash" + childCommitHash);
-                                            System.out.println("parentCommitHash" + parentCommitHash);
+                                            System.out.println("childCommitHash: " + childCommitHash);
+                                            System.out.println("parentCommitHash: " + parentCommitHash);
 
                                             System.out.println("childMutation.currentCommitData.lineNo: " + childMutation.currentCommitData.lineNo);
 
@@ -1423,39 +1473,39 @@ class MainWorker implements Worker {
             if (artifactId.equals("pitest-maven")) {
 
                 plugins.removeChild(plugin);
-//                i--;
-                break;
+                i--;
+//                break;
             }
-//            else if (artifactId.equals("maven-surefire-plugin")) {
-//
-//                NodeList configurationContainer = plugin.getElementsByTagName("configuration");
-//                Element configuration;
-//
-//                if (configurationContainer.getLength() > 0) {
-//                    configuration = (Element) configurationContainer.item(0);
-//                } else {
-//                    configuration = xmlDoc.createElement("configuration");
-//                    plugin.appendChild(configuration);
-//                }
-//
-//                NodeList excludesContainer = configuration.getElementsByTagName("excludes");
-//                Element excludes;
-//
-//                if (excludesContainer.getLength() > 0) {
-//                    excludes = (Element) excludesContainer.item(0);
-//                } else {
-//                    excludes = xmlDoc.createElement("excludes");
-//                    configuration.appendChild(excludes);
-//                }
-//
-////                Element exclude = xmlDoc.createElement("exclude");
-////                exclude.appendChild(xmlDoc.createTextNode("**/org/apache/commons/collections4/multimap/HashSetValuedHashMapTest.java"));
-////                excludes.appendChild(exclude);
-//
+            else if (artifactId.equals("maven-surefire-plugin")) {
+
+                NodeList configurationContainer = plugin.getElementsByTagName("configuration");
+                Element configuration;
+
+                if (configurationContainer.getLength() > 0) {
+                    configuration = (Element) configurationContainer.item(0);
+                } else {
+                    configuration = xmlDoc.createElement("configuration");
+                    plugin.appendChild(configuration);
+                }
+
+                NodeList excludesContainer = configuration.getElementsByTagName("excludes");
+                Element excludes;
+
+                if (excludesContainer.getLength() > 0) {
+                    excludes = (Element) excludesContainer.item(0);
+                } else {
+                    excludes = xmlDoc.createElement("excludes");
+                    configuration.appendChild(excludes);
+                }
+
 //                Element exclude = xmlDoc.createElement("exclude");
-//                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
+//                exclude.appendChild(xmlDoc.createTextNode("**/org/apache/commons/collections4/multimap/HashSetValuedHashMapTest.java"));
 //                excludes.appendChild(exclude);
-//            }
+
+                Element exclude = xmlDoc.createElement("exclude");
+                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
+                excludes.appendChild(exclude);
+            }
         }
         plugins.appendChild(pitPlugin(xmlDoc));
 

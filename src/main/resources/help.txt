@@ -10,7 +10,7 @@ usage:  java -jar [<path>]pitstat.jar   [--project-path | -PP <path>] [--reports
                                 - by default set to current path
 
     --reports-path, -RP     output path for pitstat reports
-                                - by default set to "<project-path>/target/pitstat-reports"
+                                - by default set to "<project-path>/pitstat-reports"
 
     --start-commit, -SC     most recent commit to start pitstat analysis from
                                 - by default set to HEAD

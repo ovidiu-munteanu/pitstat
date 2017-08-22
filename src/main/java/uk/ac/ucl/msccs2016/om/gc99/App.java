@@ -9,7 +9,7 @@ public class App {
         System.out.println();
 
         String projectPath = "";
-        String pitStatReportsPath = "target/pitstat-reports";
+        String pitStatReportsPath = "pitstat-reports";
         boolean pitStatReportsPathRelative = true;
         boolean createTimestampFolder = true;
         String startCommit = "HEAD";
