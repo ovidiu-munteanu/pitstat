@@ -230,7 +230,7 @@ class GitUtils implements Git {
 
 
     static void gitCheckout(String target, String projectPath, CommandExecutor commandExecutor) {
-        gitCheckout(target, "", projectPath, commandExecutor);
+        gitCheckout(target, CHECKOUT_OPTION_FORCE, projectPath, commandExecutor);
     }
 
 

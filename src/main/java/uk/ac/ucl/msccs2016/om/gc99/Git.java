@@ -26,6 +26,7 @@ interface Git {
 
     String GIT_CHECKOUT_COMMAND = GIT_COMMAND + " checkout <checkoutOptions> ";
     String CHECKOUT_OPTION_NEW_BRANCH = " -b ";
+    String CHECKOUT_OPTION_FORCE = " -f ";
 
     String GIT_BRANCH_COMMAND = GIT_COMMAND + " branch <branchOptions> ";
     String BRANCH_DELETE_OPTION = " -D ";

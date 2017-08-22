@@ -1455,9 +1455,28 @@ class MainWorker implements Worker {
     }
 
 
+    private void fixUTF_in_commons_dbutils_pom(File corruptedPom) throws IOException {
+        List<String> pomLines = Utils.readAllLines(corruptedPom.toPath());
+
+        StringBuilder fixedPom = new StringBuilder();
+
+        for (String pomLine : pomLines) {
+            if (pomLine.contains("Bagyinszki"))
+                fixedPom.append("<name>Peter Bagyinszki</name>");
+            else
+                fixedPom.append(pomLine);
+            fixedPom.append("\n");
+        }
+
+        Files.write(corruptedPom.toPath(), fixedPom.toString().getBytes());
+    }
+
+
     private File createTempPom(String repoPath, String pomFile) throws IOException, SAXException, TransformerException, XPathExpressionException {
 
         File repositoryPom = new File(Paths.get(repoPath, pomFile).toString());
+
+        fixUTF_in_commons_dbutils_pom(repositoryPom);
 
         Document xmlDoc = documentBuilder.parse(repositoryPom);
 
@@ -1475,8 +1494,7 @@ class MainWorker implements Worker {
                 plugins.removeChild(plugin);
                 i--;
 //                break;
-            }
-            else if (artifactId.equals("maven-surefire-plugin")) {
+            } else if (artifactId.equals("maven-surefire-plugin")) {
 
                 NodeList configurationContainer = plugin.getElementsByTagName("configuration");
                 Element configuration;
@@ -1499,11 +1517,12 @@ class MainWorker implements Worker {
                 }
 
 //                Element exclude = xmlDoc.createElement("exclude");
-//                exclude.appendChild(xmlDoc.createTextNode("**/org/apache/commons/collections4/multimap/HashSetValuedHashMapTest.java"));
+//                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
 //                excludes.appendChild(exclude);
 
+                // Test exclude for commons-dbutils from commit
                 Element exclude = xmlDoc.createElement("exclude");
-                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
+                exclude.appendChild(xmlDoc.createTextNode("**/TestBean.java"));
                 excludes.appendChild(exclude);
             }
         }
