@@ -242,7 +242,7 @@ class MainWorker implements Worker {
                 parentCommitHash = ++parentCommitIndex == commitsHashList.size() ?
                         "currently at initial commit -> no parent hash" : commitsHashList.get(parentCommitIndex);
 
-                thread = new Thread(() -> GitUtils.gitCheckout(currentCommitHash, projectPath, commandExecutor));
+                thread = new Thread(() -> GitUtils.gitCheckout(currentCommitHash, projectPath, commandExecutor, true));
                 thread.start();
                 thread.join();
 
@@ -252,7 +252,7 @@ class MainWorker implements Worker {
 
         } while (!isEndCommit && currentRollback <= maxRollbacks);
 
-        GitUtils.gitCheckout(tempHead, projectPath, commandExecutor);
+        GitUtils.gitCheckout(tempHead, projectPath, commandExecutor, true);
 
         if (resetUntracked) GitUtils.gitResetMixedTo(Git.HEAD_PARENT, projectPath, commandExecutor);
         if (resetIndex) GitUtils.gitResetSoftTo(Git.HEAD_PARENT, projectPath, commandExecutor);
@@ -1455,28 +1455,30 @@ class MainWorker implements Worker {
     }
 
 
-    private void fixUTF_in_commons_dbutils_pom(File corruptedPom) throws IOException {
-        List<String> pomLines = Utils.readAllLines(corruptedPom.toPath());
-
-        StringBuilder fixedPom = new StringBuilder();
-
-        for (String pomLine : pomLines) {
-            if (pomLine.contains("Bagyinszki"))
-                fixedPom.append("<name>Peter Bagyinszki</name>");
-            else
-                fixedPom.append(pomLine);
-            fixedPom.append("\n");
-        }
-
-        Files.write(corruptedPom.toPath(), fixedPom.toString().getBytes());
-    }
+    // Fix UTF-8 error in pom.xml file for commons-dbutils
+//    private void fixUTF_in_commons_dbutils_pom(File corruptedPom) throws IOException {
+//        List<String> pomLines = Utils.readAllLines(corruptedPom.toPath());
+//
+//        StringBuilder fixedPom = new StringBuilder();
+//
+//        for (String pomLine : pomLines) {
+//            if (pomLine.contains("Bagyinszki"))
+//                fixedPom.append("<name>Peter Bagyinszki</name>");
+//            else
+//                fixedPom.append(pomLine);
+//            fixedPom.append("\n");
+//        }
+//
+//        Files.write(corruptedPom.toPath(), fixedPom.toString().getBytes());
+//    }
 
 
     private File createTempPom(String repoPath, String pomFile) throws IOException, SAXException, TransformerException, XPathExpressionException {
 
         File repositoryPom = new File(Paths.get(repoPath, pomFile).toString());
 
-        fixUTF_in_commons_dbutils_pom(repositoryPom);
+        // Fix UTF-8 error in pom.xml file for commons-dbutils
+//        fixUTF_in_commons_dbutils_pom(repositoryPom);
 
         Document xmlDoc = documentBuilder.parse(repositoryPom);
 
@@ -1492,39 +1494,41 @@ class MainWorker implements Worker {
             if (artifactId.equals("pitest-maven")) {
 
                 plugins.removeChild(plugin);
-                i--;
-//                break;
-            } else if (artifactId.equals("maven-surefire-plugin")) {
-
-                NodeList configurationContainer = plugin.getElementsByTagName("configuration");
-                Element configuration;
-
-                if (configurationContainer.getLength() > 0) {
-                    configuration = (Element) configurationContainer.item(0);
-                } else {
-                    configuration = xmlDoc.createElement("configuration");
-                    plugin.appendChild(configuration);
-                }
-
-                NodeList excludesContainer = configuration.getElementsByTagName("excludes");
-                Element excludes;
-
-                if (excludesContainer.getLength() > 0) {
-                    excludes = (Element) excludesContainer.item(0);
-                } else {
-                    excludes = xmlDoc.createElement("excludes");
-                    configuration.appendChild(excludes);
-                }
-
+//                i--;
+                break;
+            }
+//            else if (artifactId.equals("maven-surefire-plugin")) {
+//
+//                NodeList configurationContainer = plugin.getElementsByTagName("configuration");
+//                Element configuration;
+//
+//                if (configurationContainer.getLength() > 0) {
+//                    configuration = (Element) configurationContainer.item(0);
+//                } else {
+//                    configuration = xmlDoc.createElement("configuration");
+//                    plugin.appendChild(configuration);
+//                }
+//
+//                NodeList excludesContainer = configuration.getElementsByTagName("excludes");
+//                Element excludes;
+//
+//                if (excludesContainer.getLength() > 0) {
+//                    excludes = (Element) excludesContainer.item(0);
+//                } else {
+//                    excludes = xmlDoc.createElement("excludes");
+//                    configuration.appendChild(excludes);
+//                }
+//
+//                // Exclude failing test for jfreechart
 //                Element exclude = xmlDoc.createElement("exclude");
 //                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
 //                excludes.appendChild(exclude);
-
-                // Test exclude for commons-dbutils from commit
-                Element exclude = xmlDoc.createElement("exclude");
-                exclude.appendChild(xmlDoc.createTextNode("**/TestBean.java"));
-                excludes.appendChild(exclude);
-            }
+//
+//                // Exclude failing test for commons-dbutils from commit da0135a53a7e23fee525cd3865c35b6d83e24dab
+//                Element exclude = xmlDoc.createElement("exclude");
+//                exclude.appendChild(xmlDoc.createTextNode("**/TestBean.java"));
+//                excludes.appendChild(exclude);
+//            }
         }
         plugins.appendChild(pitPlugin(xmlDoc));
 

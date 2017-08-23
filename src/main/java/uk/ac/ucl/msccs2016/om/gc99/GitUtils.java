@@ -39,12 +39,12 @@ class GitUtils implements Git {
     }
 
 
-    static String commitIndex(String projectPath, CommandExecutor commandExecutor){
+    static String commitIndex(String projectPath, CommandExecutor commandExecutor) {
         return commitIndex(COMMIT_MESSAGE_PITSTAT_INDEX, projectPath, commandExecutor);
     }
 
 
-    static String commitUntracked(String projectPath, CommandExecutor commandExecutor){
+    static String commitUntracked(String projectPath, CommandExecutor commandExecutor) {
         stageAllUntracked(projectPath, commandExecutor);
         return commitIndex(COMMIT_MESSAGE_PITSTAT_UNTRACKED, projectPath, commandExecutor);
     }
@@ -67,7 +67,7 @@ class GitUtils implements Git {
     }
 
 
-    static void stageAllUntracked(String projectPath, CommandExecutor commandExecutor){
+    static void stageAllUntracked(String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
 
         String command = GIT_ADD_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
@@ -208,7 +208,7 @@ class GitUtils implements Git {
     }
 
 
-    static  void gitResetTo(String commit, String resetOption, String projectPath, CommandExecutor commandExecutor){
+    static void gitResetTo(String commit, String resetOption, String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
 
         String command = GIT_RESET_COMMAND.replace(GIT_OPTIONS_PLACEHOLDER, gitOptions);
@@ -231,6 +231,11 @@ class GitUtils implements Git {
 
     static void gitCheckout(String target, String projectPath, CommandExecutor commandExecutor) {
         gitCheckout(target, CHECKOUT_OPTION_FORCE, projectPath, commandExecutor);
+    }
+
+
+    static void gitCheckout(String target, String projectPath, CommandExecutor commandExecutor, boolean forceCheckout) {
+        gitCheckout(target, forceCheckout ? CHECKOUT_OPTION_FORCE : "", projectPath, commandExecutor);
     }
 
 
