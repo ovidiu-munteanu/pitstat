@@ -34,10 +34,10 @@ public class ProcessData implements Worker {
 
         ProcessData processData = new ProcessData();
 
-        processData.countIdenticalCommits(directory);
+//        processData.countIdenticalCommits(directory);
 
-        processData.listSkippedOutput(directory);
-        processData.addMatrices(directory);
+//        processData.listSkippedOutput(directory);
+//        processData.addMatrices(directory);
 
         processData.createSeries(directory);
 
@@ -317,7 +317,7 @@ public class ProcessData implements Worker {
 
 
 //            if (matrixOutput.pitMatrix[ROW_COL_NON_EXISTENT][ROW_COL_TOTAL] > 0)
-                oldTotalRemoved.add(matrixOutput.pitMatrix[ROW_COL_TOTAL][ROW_COL_NON_EXISTENT]);
+                oldTotalRemoved.add(matrixOutput.pitMatrix[ROW_COL_NON_EXISTENT][ROW_COL_TOTAL]);
             oldTotalKilled.add(matrixOutput.pitMatrix[ROW_COL_KILLED][ROW_COL_TOTAL]);
             oldTotalSurvived.add(matrixOutput.pitMatrix[ROW_COL_SURVIVED][ROW_COL_TOTAL]);
             oldTotalNoCoverage.add(matrixOutput.pitMatrix[ROW_COL_NO_COVERAGE][ROW_COL_TOTAL]);
