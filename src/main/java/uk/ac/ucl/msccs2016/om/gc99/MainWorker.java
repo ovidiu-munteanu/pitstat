@@ -1,6 +1,10 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
-import org.apache.maven.shared.invoker.*;
+import org.apache.maven.shared.invoker.DefaultInvocationRequest;
+import org.apache.maven.shared.invoker.DefaultInvoker;
+import org.apache.maven.shared.invoker.InvocationRequest;
+import org.apache.maven.shared.invoker.InvocationResult;
+import org.apache.maven.shared.invoker.Invoker;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -183,9 +187,8 @@ class MainWorker implements Worker {
                 try {
                     runPitMutationTesting();
                 } catch (Exception e) {
-                    System.err.println();
-                    System.err.println("Pitest Mutations Testing - Commit " + currentCommitHash);
-                    System.err.println("runPitMutationTesting(): has thrown and exception - stack trace is included below:");
+                    System.err.println("\nPitest Mutations Testing - Commit " + currentCommitHash);
+                    System.err.println("runPitMutationTesting(): has thrown and exception - stack trace is included below:\n");
                     e.printStackTrace();
                 }
             });
@@ -201,7 +204,28 @@ class MainWorker implements Worker {
                     thread = new Thread(() ->
                     {
                         try {
+
+                            // The changes output is built at the same time as the Pit matrix!
+                            // When a mutation is found that is not on the diagonal of the Pit matrix, then it is
+                            // a change so a new entry needs to be added to the changes record.
+
+                            // NOTE 1: a pit matrix is only produced if the Pit mutation test was run for both the
+                            // child and the current commit (i.e. Pit outputs are available for the child and the
+                            // current commit)
+
+                            // NOTE 2: similarly, a change record is only produced if there is a Pit matrix can be
+                            // produced (i.e. Pit outputs were produced for both the previous and the current commit).
+                            // Additionally, a change record is only produced it there are actually any changes in the
+                            // Pit matrix (i.e. there are values outside the matrix diagonal)
+
+                            // NOTE 3: the Pit matrix is named using the child commit hash, where the child commit is
+                            // the 'new' commit and the current commit is the 'old' commit;
+
+                            // NOTE 4: similarly, the change record is named using the child commit hash in the same
+                            // way as the matrix is named
+
                             runPitMatrixAnalysis();
+
                         } catch (IOException e) {
                             System.err.println();
                             System.err.println("Pitest Mutations Testing - Commit " + currentCommitHash);
@@ -214,11 +238,10 @@ class MainWorker implements Worker {
                     thread.join();
 
                 } else {
-                    System.err.println();
-                    System.err.println("Pit Matrix Analysis - Child   (new) commit " + childCommitHash);
+                    System.err.println("\nPit Matrix Analysis - Child   (new) commit " + childCommitHash);
                     System.err.println("                      Current (old) commit " + currentCommitHash);
                     System.err.println("Skipping analysis: childPitOutput   == " + childPitOutput);
-                    System.err.println("                   currentPitOutput == " + childPitOutput);
+                    System.err.println("                   currentPitOutput == " + currentPitOutput + "\n");
                 }
             }
 
@@ -227,9 +250,8 @@ class MainWorker implements Worker {
                 try {
                     mavenClean();
                 } catch (Exception e) {
-                    System.err.println();
-                    System.err.println("Pitest Mutations Testing - Commit " + currentCommitHash);
-                    System.err.println("mavenClean(): has thrown and exception - stack trace is included below:");
+                    System.err.println("\nPitest Mutations Testing - Commit " + currentCommitHash);
+                    System.err.println("mavenClean(): has thrown and exception - stack trace is included below:\n");
                     e.printStackTrace();
                 }
             });
@@ -441,8 +463,19 @@ class MainWorker implements Worker {
 
                 if ((DIFF_STATUS_ADDED + DIFF_STATUS_COPIED + DIFF_STATUS_DELETED).contains(diffStatus) || fileIsJar) {
 
+
                     // If the file is added, copied or deleted it would be superfluous to list all its lines as added
                     // or deleted so the line diff is skipped.
+
+                    // Line mapping of copied files is not done since as far as the change in mutations and mutation
+                    // test results is concerned, a copy of an existing file is the same as adding a new file; even
+                    // if the copy and the original are identical in content, the copy will have a different name
+                    // and/or a different path; therefore, it is a newly added file and even if the mutations and
+                    // mutation test results are the same as in the original file, it cannot be said that this is the
+                    // same set of mutations - for all intents and purposes it is a new set of mutations applied to a
+                    // new file; therefore, when searching for changes in mutations and mutation test results, these
+                    // mutations will be classed as new and thus the line difference and line mapping between the copy
+                    // and original file is irrelevant
 
                     // There have also been found situations where the changed file is a jar and not a source file.
                     // In this case it would also be superfluous to run a line diff.
@@ -892,8 +925,11 @@ class MainWorker implements Worker {
     }
 
     private String parseMalformedKillingTestElement(String killingTestElement) {
+
         String topLevelDomain = killingTestElement.substring(0, killingTestElement.indexOf("."));
+
         int lastIndexOfTopLevelDomain = killingTestElement.lastIndexOf(topLevelDomain);
+
         return killingTestElement.substring(0, lastIndexOfTopLevelDomain) + "UNKNOWN_METHOD_NAME" +
                 "(" + killingTestElement.substring(lastIndexOfTopLevelDomain) + ")";
     }
@@ -905,7 +941,6 @@ class MainWorker implements Worker {
 
         int maxMutationsNo = buildPitMatrix(hashToOutput(childCommitHash), hashToOutput(currentCommitHash), pitMatrix);
 
-//        if (maxMutationsNo == -1) App.systemExit(99);
         if (maxMutationsNo == -1) return;
 
 
@@ -1024,7 +1059,7 @@ class MainWorker implements Worker {
             childFileName = childMutatedFileEntry.getKey();
             childMutatedFile = childMutatedFileEntry.getValue();
 
-            ChangedFile diffChangedFile = childDiffOutput.changedFiles.getOrDefault(childFileName, null);
+            ChangedFile diffChangedFile = childDiffOutput.changedFiles.get(childFileName);
 
             if (isChildCommit && diffChangedFile != null && diffChangedFile.diffStatus.equals(DIFF_STATUS_RENAMED)) {
                 parentFileName = diffChangedFile.oldFileName;
@@ -1172,6 +1207,11 @@ class MainWorker implements Worker {
                             // statistics matrix and therefore the meaning of the row and column variables is
                             // also transposed:
                             pitMatrix[matrixCol][matrixRow]++;
+
+
+                            // The changes output is built at the same time as the Pit matrix!
+                            // When a mutation is found that is not on the diagonal of the Pit matrix, then a change
+                            // was found so a new entry needs to be added to the changes record.
 
                             if (matrixRow != matrixCol)
                                 addChangedMutation(childCommitHash, parentCommitHash, diffChangedFile, ROW_COL_NON_EXISTENT,
@@ -1483,53 +1523,60 @@ class MainWorker implements Worker {
         Document xmlDoc = documentBuilder.parse(repositoryPom);
 
         Node plugins = (Node) xPath.compile("/project/build/plugins").evaluate(xmlDoc, XPathConstants.NODE);
-        NodeList pluginList = (NodeList) xPath.compile("/project/build/plugins/plugin").evaluate(xmlDoc, XPathConstants.NODESET);
 
-        for (int i = 0; i < pluginList.getLength(); i++) {
+        if (plugins == null) {
+            plugins = xmlDoc.createElement("plugins");
+            ((Node) xPath.compile("/project/build").evaluate(xmlDoc, XPathConstants.NODE)).appendChild(plugins);
 
-            Element plugin = (Element) pluginList.item(i);
+        } else {
+            NodeList pluginList = (NodeList) xPath.compile("/project/build/plugins/plugin").evaluate(xmlDoc, XPathConstants.NODESET);
 
-            String artifactId = plugin.getElementsByTagName("artifactId").item(0).getTextContent();
+            for (int i = 0; i < pluginList.getLength(); i++) {
 
-            if (artifactId.equals("pitest-maven")) {
+                Element plugin = (Element) pluginList.item(i);
 
-                plugins.removeChild(plugin);
-//                i--;
-                break;
+                String artifactId = plugin.getElementsByTagName("artifactId").item(0).getTextContent();
+
+                if (artifactId.equals("pitest-maven")) {
+                    plugins.removeChild(plugin);
+//                    i--;
+                    break;
+                }
+//                else if (artifactId.equals("maven-surefire-plugin")) {
+//
+//                    NodeList configurationContainer = plugin.getElementsByTagName("configuration");
+//                    Element configuration;
+//
+//                    if (configurationContainer.getLength() > 0) {
+//                        configuration = (Element) configurationContainer.item(0);
+//                    } else {
+//                        configuration = xmlDoc.createElement("configuration");
+//                        plugin.appendChild(configuration);
+//                    }
+//
+//                    NodeList excludesContainer = configuration.getElementsByTagName("excludes");
+//                    Element excludes;
+//
+//                    if (excludesContainer.getLength() > 0) {
+//                        excludes = (Element) excludesContainer.item(0);
+//                    } else {
+//                        excludes = xmlDoc.createElement("excludes");
+//                        configuration.appendChild(excludes);
+//                    }
+//
+//                    // Exclude failing test for jfreechart
+//                    Element exclude = xmlDoc.createElement("exclude");
+//                    exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest*"));
+//                    excludes.appendChild(exclude);
+//
+//                    // Exclude failing test for commons-dbutils from commit da0135a53a7e23fee525cd3865c35b6d83e24dab
+//                    Element exclude = xmlDoc.createElement("exclude");
+//                    exclude.appendChild(xmlDoc.createTextNode("**/TestBean.java"));
+//                    excludes.appendChild(exclude);
+//                }
             }
-//            else if (artifactId.equals("maven-surefire-plugin")) {
-//
-//                NodeList configurationContainer = plugin.getElementsByTagName("configuration");
-//                Element configuration;
-//
-//                if (configurationContainer.getLength() > 0) {
-//                    configuration = (Element) configurationContainer.item(0);
-//                } else {
-//                    configuration = xmlDoc.createElement("configuration");
-//                    plugin.appendChild(configuration);
-//                }
-//
-//                NodeList excludesContainer = configuration.getElementsByTagName("excludes");
-//                Element excludes;
-//
-//                if (excludesContainer.getLength() > 0) {
-//                    excludes = (Element) excludesContainer.item(0);
-//                } else {
-//                    excludes = xmlDoc.createElement("excludes");
-//                    configuration.appendChild(excludes);
-//                }
-//
-//                // Exclude failing test for jfreechart
-//                Element exclude = xmlDoc.createElement("exclude");
-//                exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest.java"));
-//                excludes.appendChild(exclude);
-//
-//                // Exclude failing test for commons-dbutils from commit da0135a53a7e23fee525cd3865c35b6d83e24dab
-//                Element exclude = xmlDoc.createElement("exclude");
-//                exclude.appendChild(xmlDoc.createTextNode("**/TestBean.java"));
-//                excludes.appendChild(exclude);
-//            }
         }
+
         plugins.appendChild(pitPlugin(xmlDoc));
 
 

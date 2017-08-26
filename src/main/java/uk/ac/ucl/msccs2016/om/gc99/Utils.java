@@ -15,8 +15,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -297,6 +295,7 @@ class Utils {
     }
 
 
+    // Based on Stack Overflow post at https://stackoverflow.com/a/14297352
     static String systemShutdownCommand(int timeout) {
         String shutdownCommand = null;
 

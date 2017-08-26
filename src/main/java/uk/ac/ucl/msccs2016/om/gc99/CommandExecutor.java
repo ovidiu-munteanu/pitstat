@@ -14,6 +14,8 @@ class CommandExecutor {
     }
 
     /**
+     * Executes the given command and returns the result of execution.
+     *
      * @param command string containing the command to be executed
      * @return return error code; 0 (zero) if no error
      */
@@ -22,6 +24,8 @@ class CommandExecutor {
     }
 
     /**
+     * Executes the given system command and return result of execution.
+     *
      * @param command      String containing the command to be executed
      * @param printCommand boolean indicating whether the command should be printed out to the standard output
      *                     true if the command should be printed out, false othewise
@@ -40,7 +44,7 @@ class CommandExecutor {
     }
 
     /**
-     * Get the standard output (stdout) from the command you just exec'd.
+     * Get the standard output (stdout) from the command executed.
      */
     List<String> getStandardOutput() {
         return inputStreamHandler.getOutputBuffer();

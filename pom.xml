@@ -60,10 +60,10 @@
             <version>2.8.1</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.jfree/jfreechart -->
-        <dependency>
+        <!--<dependency>
             <groupId>org.jfree</groupId>
             <artifactId>jfreechart</artifactId>
             <version>1.0.19</version>
-        </dependency>
+        </dependency>-->
     </dependencies>
 </project>

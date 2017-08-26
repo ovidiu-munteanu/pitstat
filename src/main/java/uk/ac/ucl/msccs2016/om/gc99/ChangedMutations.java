@@ -15,6 +15,10 @@ class ChangedMutations {
     HashMap<String, MutatedFile> memoryErrorMutations;
     HashMap<String, MutatedFile> runErrorMutations;
 
+    ChangedMutations(){
+
+    }
+
     ChangedMutations(String currentCommitHash, String parentCommitHash){
         this.currentCommitHash = currentCommitHash;
         this.parentCommitHash = parentCommitHash;
