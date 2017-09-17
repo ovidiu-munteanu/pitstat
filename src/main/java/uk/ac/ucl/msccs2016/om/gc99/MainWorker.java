@@ -40,7 +40,9 @@ import java.util.Map;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.getNameOnly;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.paddingSpaces;
 
-
+/**
+ *
+ */
 class MainWorker implements Worker {
 
     private final CommandExecutor commandExecutor;
@@ -77,7 +79,21 @@ class MainWorker implements Worker {
     private PitOutput childPitOutput, currentPitOutput;
     private DiffOutput childDiffOutput, currentDiffOutput;
 
-
+    /**
+     *
+     * @param projectPath
+     * @param pitStatReportsPath
+     * @param pitStatReportsPathRelative
+     * @param createTimestampDirectory
+     * @param noHuman
+     * @param zipOutput
+     * @param noMachine
+     * @param startCommit
+     * @param endCommit
+     * @param maxRollbacks
+     * @param threadsNo
+     * @throws Exception
+     */
     MainWorker(String projectPath,
                String pitStatReportsPath,
                boolean pitStatReportsPathRelative,
@@ -126,7 +142,10 @@ class MainWorker implements Worker {
         this.threadsNo = threadsNo;
     }
 
-
+    /**
+     *
+     * @throws Exception
+     */
     void doWork() throws Exception {
 
         originalGitBranch = GitUtils.getGitBranch(Git.HEAD, projectPath, commandExecutor);
@@ -283,7 +302,10 @@ class MainWorker implements Worker {
         GitUtils.deletePitStatBranch(pitStatBranch, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @throws Exception
+     */
     private void mavenClean() throws Exception {
 
         File defaultPom = new File(Paths.get(projectPath, POM_FILE).toString());
@@ -302,7 +324,9 @@ class MainWorker implements Worker {
         }
     }
 
-
+    /**
+     *
+     */
     private void validateBoundaryCommits() {
 
         if (startCommit.equals(Git.INDEX))
@@ -386,7 +410,10 @@ class MainWorker implements Worker {
         }
     }
 
-
+    /**
+     *
+     * @throws IOException
+     */
     private void runGitDiff() throws IOException {
 
         // git diff name-status between previous and current commit
@@ -707,6 +734,11 @@ class MainWorker implements Worker {
         }
     }
 
+    /**
+     *
+     * @param mapFileLines
+     * @return
+     */
     private String formatDiffMapOutput(List<String> mapFileLines) {
 
         StringBuilder stringBuilder = new StringBuilder();
@@ -758,7 +790,10 @@ class MainWorker implements Worker {
         return stringBuilder.toString();
     }
 
-
+    /**
+     *
+     * @throws Exception
+     */
     private void runPitMutationTesting() throws Exception {
 
         File tempPom = createTempPom(projectPath, POM_FILE);
@@ -924,6 +959,11 @@ class MainWorker implements Worker {
 
     }
 
+    /**
+     *
+     * @param killingTestElement
+     * @return
+     */
     private String parseMalformedKillingTestElement(String killingTestElement) {
 
         String topLevelDomain = killingTestElement.substring(0, killingTestElement.indexOf("."));
@@ -934,7 +974,10 @@ class MainWorker implements Worker {
                 "(" + killingTestElement.substring(lastIndexOfTopLevelDomain) + ")";
     }
 
-
+    /**
+     *
+     * @throws IOException
+     */
     private void runPitMatrixAnalysis() throws IOException {
 
         int[][] pitMatrix = new int[SIZE_PIT_MATRIX][SIZE_PIT_MATRIX];
@@ -990,7 +1033,13 @@ class MainWorker implements Worker {
         }
     }
 
-
+    /**
+     *
+     * @param childCommitHash
+     * @param currentCommitHash
+     * @param pitMatrix
+     * @return
+     */
     private int buildPitMatrix(String childCommitHash, String currentCommitHash, int[][] pitMatrix) {
 
         PitOutput currentPitOutput = this.currentPitOutput.getClone();
@@ -1042,7 +1091,15 @@ class MainWorker implements Worker {
         return maxValue;
     }
 
-
+    /**
+     *
+     * @param childPitOutput
+     * @param childCommitHash
+     * @param isChildCommit
+     * @param parentPitOutput
+     * @param parentCommitHash
+     * @param pitMatrix
+     */
     private void countMutations(PitOutput childPitOutput, String childCommitHash, boolean isChildCommit,
                                 PitOutput parentPitOutput, String parentCommitHash,
                                 int[][] pitMatrix) {
@@ -1232,7 +1289,20 @@ class MainWorker implements Worker {
         }
     }
 
-
+    /**
+     *
+     * @param newCommitHash
+     * @param oldCommitHash
+     * @param diffChangedFile
+     * @param mutationStatus
+     * @param newFileName
+     * @param newClassName
+     * @param newMethodName
+     * @param newMethodDescription
+     * @param changedMutation
+     * @param oldMutation
+     * @param oldMethodDescription
+     */
     private void addChangedMutation(String newCommitHash, String oldCommitHash, ChangedFile diffChangedFile,
                                     int mutationStatus, String newFileName, String newClassName, String newMethodName,
                                     String newMethodDescription, MutatedFile.Mutation changedMutation,
@@ -1366,7 +1436,11 @@ class MainWorker implements Worker {
         if (isNewMutatedFile) mutatedFiles.put(newFileName, mutatedFile);
     }
 
-
+    /**
+     *
+     * @param mutationStatus
+     * @return
+     */
     private HashMap<String, MutatedFile> getHashMapForRelevantMutationStatus(int mutationStatus) {
         switch (mutationStatus) {
             case ROW_COL_NON_EXISTENT:
@@ -1399,7 +1473,14 @@ class MainWorker implements Worker {
         }
     }
 
-
+    /**
+     *
+     * @param pitMatrix
+     * @param maxValue
+     * @param newCommit
+     * @param oldCommit
+     * @return
+     */
     static String formatPitMatrixOutput(int[][] pitMatrix, int maxValue, String newCommit, String oldCommit) {
 
         int paddingSpacesNo;
@@ -1473,7 +1554,11 @@ class MainWorker implements Worker {
         return stringBuilder.toString();
     }
 
-
+    /**
+     *
+     * @param status
+     * @return
+     */
     private int getMatrixRowCol(String status) {
         switch (status) {
             case PIT_STATUS_KILLED:
@@ -1495,7 +1580,12 @@ class MainWorker implements Worker {
     }
 
 
-    // Fix UTF-8 error in pom.xml file for commons-dbutils
+//    /**
+//     * Fix UTF-8 error in pom.xml file for commons-dbutils
+//     *
+//     * @param corruptedPom
+//     * @throws IOException
+//     */
 //    private void fixUTF_in_commons_dbutils_pom(File corruptedPom) throws IOException {
 //        List<String> pomLines = Utils.readAllLines(corruptedPom.toPath());
 //
@@ -1512,7 +1602,16 @@ class MainWorker implements Worker {
 //        Files.write(corruptedPom.toPath(), fixedPom.toString().getBytes());
 //    }
 
-
+    /**
+     *
+     * @param repoPath
+     * @param pomFile
+     * @return
+     * @throws IOException
+     * @throws SAXException
+     * @throws TransformerException
+     * @throws XPathExpressionException
+     */
     private File createTempPom(String repoPath, String pomFile) throws IOException, SAXException, TransformerException, XPathExpressionException {
 
         File repositoryPom = new File(Paths.get(repoPath, pomFile).toString());
@@ -1579,7 +1678,6 @@ class MainWorker implements Worker {
 
         plugins.appendChild(pitPlugin(xmlDoc));
 
-
         NodeList dependencyList = (NodeList) xPath.compile("/project/dependencies/dependency").evaluate(xmlDoc, XPathConstants.NODESET);
         for (int i = 0; i < dependencyList.getLength(); i++) {
             Node dependency = dependencyList.item(i);
@@ -1591,7 +1689,6 @@ class MainWorker implements Worker {
             }
         }
 
-
         File tempPom = Files.createTempFile(Paths.get(repoPath), "pit-pom", ".xml").toFile();
 
         Transformer transformer = TransformerFactory.newInstance().newTransformer();
@@ -1600,7 +1697,11 @@ class MainWorker implements Worker {
         return tempPom;
     }
 
-
+    /**
+     *
+     * @param xmlDoc
+     * @return
+     */
     private Element pitPlugin(Document xmlDoc) {
         Element pitPlugin = xmlDoc.createElement("plugin");
 
@@ -1632,12 +1733,21 @@ class MainWorker implements Worker {
         return pitPlugin;
     }
 
-
+    /**
+     *
+     * @param commitHash
+     * @return
+     */
     private String hashToOutput(String commitHash) {
         return hashToOutput(commitHash, false);
     }
 
-
+    /**
+     *
+     * @param commitHash
+     * @param longOutput
+     * @return
+     */
     private String hashToOutput(String commitHash, boolean longOutput) {
         if (commitHash.equals(notStagedCommitHash))
             return "not staged changes" + (longOutput ? " (not committed -> no hash)" : "");
@@ -1647,7 +1757,11 @@ class MainWorker implements Worker {
             return commitHash;
     }
 
-
+    /**
+     *
+     * @param commitHash
+     * @return
+     */
     private String hashToFileName(String commitHash) {
         if (commitHash.equals(notStagedCommitHash))
             return "not-staged-changes-no-hash";

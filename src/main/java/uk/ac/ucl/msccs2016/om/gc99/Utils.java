@@ -25,9 +25,20 @@ import static uk.ac.ucl.msccs2016.om.gc99.Worker.TYPE_PIT_MACHINE_OUTPUT;
 import static uk.ac.ucl.msccs2016.om.gc99.Worker.ZIP_EXTENSION;
 import static uk.ac.ucl.msccs2016.om.gc99.Worker.TEMP_DIRECTORY;
 
-
+/**
+ *
+ */
 class Utils {
 
+    /**
+     *
+     * @param pitStatReportsPath
+     * @param pitStatReportsPathRelative
+     * @param startTime
+     * @param createTimestampDirectory
+     * @param projectPath
+     * @return
+     */
     static String createOutputDirectory(String pitStatReportsPath, Boolean pitStatReportsPathRelative,
                                         String startTime, boolean createTimestampDirectory, String projectPath) {
         String resultPath;
@@ -55,12 +66,19 @@ class Utils {
         return resultPath;
     }
 
-
+    /**
+     *
+     * @return
+     */
     static List<String> listTempFiles() {
         return directoryContents(TEMP_DIRECTORY);
     }
 
-
+    /**
+     *
+     * @param directory
+     * @return
+     */
     static List<String> directoryContents(String directory) {
         List<String> directoryContents = new ArrayList<>();
         try {
@@ -72,7 +90,10 @@ class Utils {
         return directoryContents;
     }
 
-
+    /**
+     *
+     * @param oldTempFiles
+     */
     static void deleteNewTempFiles(List<String> oldTempFiles) {
         try {
             Files.list(Paths.get(TEMP_DIRECTORY))
@@ -92,22 +113,51 @@ class Utils {
         }
     }
 
-
+    /**
+     *
+     * @param outputPath
+     * @param commitHash
+     * @param o
+     * @param jsonHandler
+     * @return
+     */
     static DiffOutput loadDiffOutput(String outputPath, String commitHash, Object o, JSONHandler jsonHandler) {
         return (DiffOutput) loadOutput(outputPath, commitHash, TYPE_DIFF_MACHINE_OUTPUT, o, jsonHandler);
     }
 
-
+    /**
+     *
+     * @param outputPath
+     * @param commitHash
+     * @param o
+     * @param jsonHandler
+     * @return
+     */
     static MatrixOutput loadMatrixOutput(String outputPath, String commitHash, Object o, JSONHandler jsonHandler) {
         return (MatrixOutput) loadOutput(outputPath, commitHash, TYPE_MATRIX_MACHINE_OUTPUT, o, jsonHandler);
     }
 
-
+    /**
+     *
+     * @param outputPath
+     * @param commitHash
+     * @param o
+     * @param jsonHandler
+     * @return
+     */
     static PitOutput loadPitOutput(String outputPath, String commitHash, Object o, JSONHandler jsonHandler) {
         return (PitOutput) loadOutput(outputPath, commitHash, TYPE_PIT_MACHINE_OUTPUT, o, jsonHandler);
     }
 
-
+    /**
+     *
+     * @param outputPath
+     * @param commitHash
+     * @param outputType
+     * @param o
+     * @param jsonHandler
+     * @return
+     */
     static Object loadOutput(String outputPath, String commitHash, String outputType, Object o, JSONHandler jsonHandler) {
         String outputFileName = getOutputFileName(commitHash, outputType, outputPath);
         boolean isZipFile = getExtension(outputFileName).equals(ZIP_EXTENSION);
@@ -121,12 +171,23 @@ class Utils {
         return null;
     }
 
-
+    /**
+     *
+     * @param rootPath
+     * @param zipFileName
+     * @return
+     * @throws IOException
+     */
     static InputStream zipFileInputStream(String rootPath, String zipFileName) throws IOException {
         return zipFileInputStream(Paths.get(rootPath, zipFileName).toString());
     }
 
-
+    /**
+     *
+     * @param qualifiedFileName
+     * @return
+     * @throws IOException
+     */
     static InputStream zipFileInputStream(String qualifiedFileName) throws IOException {
         Path zipFilePath = Paths.get(qualifiedFileName);
 
@@ -137,7 +198,15 @@ class Utils {
 
     }
 
-
+    /**
+     *
+     * @param object
+     * @param filename
+     * @param outputPath
+     * @param zipOutput
+     * @param jsonHandler
+     * @throws IOException
+     */
     static void saveMachineOutput(Object object, String filename, String outputPath,
                                    boolean zipOutput, JSONHandler jsonHandler) throws IOException {
         if (zipOutput) {
@@ -149,7 +218,13 @@ class Utils {
         }
     }
 
-
+    /**
+     *
+     * @param rootPath
+     * @param sourceFile
+     * @return
+     * @throws IOException
+     */
     static OutputStream zipFileOutputStream(String rootPath, String sourceFile) throws IOException {
         String zipFile = sourceFile.replace(Utils.getExtension(sourceFile), ZIP_EXTENSION);
 
@@ -161,7 +236,13 @@ class Utils {
         return new BufferedOutputStream(zipOutputStream);
     }
 
-
+    /**
+     *
+     * @param commit
+     * @param type
+     * @param directory
+     * @return
+     */
     static String getOutputFileName(String commit, String type, String directory) {
         List<String> fileList = filesInDirectory(directory);
 
@@ -175,7 +256,11 @@ class Utils {
         return null;
     }
 
-
+    /**
+     *
+     * @param directory
+     * @return
+     */
     static List<String> filesInDirectory(String directory) {
         List<String> filesInDirectory = new ArrayList<>();
         try {
@@ -188,21 +273,35 @@ class Utils {
         return filesInDirectory;
     }
 
-
+    /**
+     *
+     * @param fileName
+     * @return
+     */
     static String getNameOnly(String fileName) {
         fileName = Paths.get(fileName).getFileName().toString();
         int lastIndexOfDot = fileName.lastIndexOf(".");
         return lastIndexOfDot > 0 ? fileName.substring(0, lastIndexOfDot) : fileName;
     }
 
-
+    /**
+     *
+     * @param fileName
+     * @return
+     */
     static String getExtension(String fileName) {
         fileName = Paths.get(fileName).getFileName().toString();
         int lastIndexOfDot = fileName.lastIndexOf(".");
         return lastIndexOfDot > 0 ? fileName.substring(lastIndexOfDot) : "";
     }
 
-
+    /**
+     *
+     * @param projectPath
+     * @param pitReportPath
+     * @param pitReportPathRelative
+     * @return
+     */
     static Path getLatestPitReportPath(String projectPath, String pitReportPath, boolean pitReportPathRelative) {
 
         Path latestPitReportPath = Paths.get((pitReportPathRelative ? projectPath : ""), pitReportPath);
@@ -223,12 +322,20 @@ class Utils {
         return latestPitReportPath;
     }
 
-
+    /**
+     *
+     * @param n
+     * @return
+     */
     static String paddingSpaces(int n) {
         return String.join("", Collections.nCopies(n, " "));
     }
 
-
+    /**
+     *
+     * @param projPath
+     * @return
+     */
     static int projectExists(String projPath) {
         File projDir = new File(projPath);
         if (!projDir.canRead()) return 1;
@@ -242,7 +349,11 @@ class Utils {
         return 0;
     }
 
-
+    /**
+     *
+     * @param reportsPath
+     * @return
+     */
     static int reportsPathOK(String reportsPath) {
         File repPath = new File(reportsPath);
         if (!repPath.canRead()) return 1;
@@ -251,7 +362,11 @@ class Utils {
         return 0;
     }
 
-
+    /**
+     *
+     * @param directory
+     * @return
+     */
     static boolean canWriteInDirectory(String directory) {
         try {
             Path testPath = Files.createTempFile(Paths.get(directory), "", "");
@@ -263,7 +378,11 @@ class Utils {
         return true;
     }
 
-
+    /**
+     *
+     * @param resourceFile
+     * @return
+     */
     static String getResourceFileAsString(String resourceFile) {
         BufferedReader bufferedReader = null;
         StringBuilder stringBuilder = new StringBuilder();
@@ -296,6 +415,12 @@ class Utils {
 
 
     // Based on Stack Overflow post at https://stackoverflow.com/a/14297352
+
+    /**
+     *
+     * @param timeout
+     * @return
+     */
     static String systemShutdownCommand(int timeout) {
         String shutdownCommand = null;
 
@@ -315,6 +440,12 @@ class Utils {
         return shutdownCommand;
     }
 
+    /**
+     *
+     * @param path
+     * @return
+     * @throws IOException
+     */
     static List<String> readAllLines(Path path) throws IOException {
         List<String> allLines = new ArrayList<>();
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(Files.newInputStream(path)));

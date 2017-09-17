@@ -4,34 +4,57 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
+/**
+ *
+ */
 class MutatedFile {
 
     String oldFileName, diffStatus;
     HashMap<String, MutatedClass> mutatedClasses;
 
+    /**
+     *
+     */
     MutatedFile() {
         mutatedClasses = new HashMap<>();
     }
 
+    /**
+     *
+     */
     static class MutatedClass {
         HashMap<String, MutatedMethod> mutatedMethods;
 
+        /**
+         *
+         */
         MutatedClass() {
             mutatedMethods = new HashMap<>();
         }
     }
 
+    /**
+     *
+     */
     static class MutatedMethod {
         String description, description_old;
         List<Mutation> mutations;
 
+        /**
+         *
+         */
         MutatedMethod() {
             mutations = new ArrayList<>();
         }
     }
 
+    /**
+     *
+     */
     static class Mutation {
-
+        /**
+         *
+         */
         static class MutationData {
             Boolean detected;
             String pitStatus;
@@ -39,6 +62,10 @@ class MutatedFile {
             String mutator, description;
             KillingTest killingTest;
 
+            /**
+             *
+             * @return
+             */
             MutationData getClone() {
                 return (MutationData) JSONHandler.cloneObject(this);
             }
@@ -47,10 +74,17 @@ class MutatedFile {
         String mutationStatus, lineDiffStatus;
         MutationData currentCommitData, parentCommitData;
 
+        /**
+         *
+         */
         Mutation() {
             currentCommitData = new MutationData();
         }
 
+        /**
+         *
+         * @param m
+         */
         Mutation(Mutation m) {
             mutationStatus = m.mutationStatus;
             parentCommitData = m.currentCommitData;
@@ -60,13 +94,22 @@ class MutatedFile {
             }
         }
 
+        /**
+         *
+         * @return
+         */
         Mutation getClone() {
             return (Mutation) JSONHandler.cloneObject(this);
         }
     }
 
+    /**
+     *
+     */
     static class KillingTest {
-
+        /**
+         *
+         */
         class TestFile {
             String fileName, testMethod, diffStatus, fileName_old, testMethod_old;
         }
@@ -104,9 +147,16 @@ class MutatedFile {
         // if this is a new killing test, i.e. the mutation was not killed in the parent commit, then testFile_old is
         // null (not explicitly initialised)
 
+        /**
+         *
+         */
         KillingTest() {
         }
 
+        /**
+         *
+         * @param initTestFile
+         */
         KillingTest(boolean initTestFile) {
             if (initTestFile) testFile = new TestFile();
         }

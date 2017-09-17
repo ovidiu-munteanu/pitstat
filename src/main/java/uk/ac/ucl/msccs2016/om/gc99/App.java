@@ -2,8 +2,15 @@ package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.security.InvalidParameterException;
 
+/**
+ *
+ */
 public class App {
-
+    /**
+     *
+     * @param args
+     * @throws Exception
+     */
     public static void main(String[] args) throws Exception {
 
         System.out.println();
@@ -252,13 +259,18 @@ public class App {
         System.exit(0);
     }
 
-
+    /**
+     *
+     */
     private static void printHelp() {
         String help = Utils.getResourceFileAsString("help.txt");
         System.out.print(help);
     }
 
-
+    /**
+     *
+     * @param commit
+     */
     private static void checkCommitLength(String commit) {
         if (commit.length() < 4) {
             System.err.println("The commit reference is too short." +
@@ -271,7 +283,10 @@ public class App {
         }
     }
 
-
+    /**
+     *
+     * @param exitCode
+     */
     static void systemExit(int exitCode) {
         System.out.println();
         System.exit(exitCode);

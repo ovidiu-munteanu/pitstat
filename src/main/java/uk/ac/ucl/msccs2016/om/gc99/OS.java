@@ -1,6 +1,10 @@
 package uk.ac.ucl.msccs2016.om.gc99;
 
 // Loosely based on System Utils class of Apache Commons Lang library
+
+/**
+ *
+ */
 interface OS {
     String OS_NAME = System.getProperty("os.name").toLowerCase();
 

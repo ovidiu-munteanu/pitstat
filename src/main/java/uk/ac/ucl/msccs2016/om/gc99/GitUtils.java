@@ -2,10 +2,17 @@ package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.util.List;
 
-
+/**
+ *
+ */
 class GitUtils implements Git {
 
-
+    /**
+     *
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static boolean indexNotEmpty(String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
         String diffOptions = DIFF_OPTION_NAME_ONLY + DIFF_OPTION_CACHED;
@@ -21,7 +28,12 @@ class GitUtils implements Git {
         return commandExecutor.getStandardOutput().size() > 0;
     }
 
-
+    /**
+     *
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static boolean notStagedNotEmpty(String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
         String addOptions = ADD_OPTION_ALL + ADD_OPTION_DRY_RUN;
@@ -38,18 +50,34 @@ class GitUtils implements Git {
         return commandExecutor.getStandardOutput().size() > 0;
     }
 
-
+    /**
+     *
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static String commitIndex(String projectPath, CommandExecutor commandExecutor) {
         return commitIndex(COMMIT_MESSAGE_PITSTAT_INDEX, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static String commitUntracked(String projectPath, CommandExecutor commandExecutor) {
         stageAllUntracked(projectPath, commandExecutor);
         return commitIndex(COMMIT_MESSAGE_PITSTAT_UNTRACKED, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param commitMessage
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static String commitIndex(String commitMessage, String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
         String commitOptions = COMMIT_MESSAGE_OPTION + commitMessage;
@@ -66,7 +94,11 @@ class GitUtils implements Git {
         return getCommitHash(HEAD, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void stageAllUntracked(String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
 
@@ -80,7 +112,15 @@ class GitUtils implements Git {
 //        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
     }
 
-
+    /**
+     *
+     * @param commit
+     * @param originalGitBranch
+     * @param commitsHashList
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static String parseCommit(String commit, String originalGitBranch, List<String> commitsHashList,
                               String projectPath, CommandExecutor commandExecutor) {
 
@@ -131,14 +171,25 @@ class GitUtils implements Git {
         return null;
     }
 
-
+    /**
+     *
+     * @param shortRev
+     * @param commitsHashList
+     * @return
+     */
     static boolean shortRevExists(String shortRev, List<String> commitsHashList) {
         for (String commit : commitsHashList)
             if (commit.startsWith(shortRev)) return true;
         return false;
     }
 
-
+    /**
+     *
+     * @param commit
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static String getGitBranch(String commit, String projectPath, CommandExecutor commandExecutor) {
 
         String gitOptions = GIT_OPTION_PATH + projectPath;
@@ -157,7 +208,13 @@ class GitUtils implements Git {
         return String.join("", commandExecutor.getStandardOutput());
     }
 
-
+    /**
+     *
+     * @param startTime
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static String checkoutPitStatBranch(String startTime, String projectPath, CommandExecutor commandExecutor) {
 
         String pitStatBranch = "pitstat" + startTime;
@@ -177,7 +234,12 @@ class GitUtils implements Git {
         return pitStatBranch;
     }
 
-
+    /**
+     *
+     * @param pitStatBranch
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void deletePitStatBranch(String pitStatBranch, String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
 
@@ -192,22 +254,43 @@ class GitUtils implements Git {
 //        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
     }
 
-
+    /**
+     *
+     * @param commit
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void gitResetSoftTo(String commit, String projectPath, CommandExecutor commandExecutor) {
         gitResetTo(commit, RESET_SOFT_OPTION, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param commit
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void gitResetMixedTo(String commit, String projectPath, CommandExecutor commandExecutor) {
         gitResetTo(commit, RESET_MIXED_OPTION, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param commit
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void gitResetHardTo(String commit, String projectPath, CommandExecutor commandExecutor) {
         gitResetTo(commit, RESET_HARD_OPTION, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param commit
+     * @param resetOption
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void gitResetTo(String commit, String resetOption, String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_PATH + projectPath;
 
@@ -223,22 +306,44 @@ class GitUtils implements Git {
 
     }
 
-
+    /**
+     *
+     * @param originalGitBranch
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void checkoutOriginalBranch(String originalGitBranch, String projectPath, CommandExecutor commandExecutor) {
         gitCheckout(originalGitBranch, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param target
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void gitCheckout(String target, String projectPath, CommandExecutor commandExecutor) {
         gitCheckout(target, CHECKOUT_OPTION_FORCE, projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param target
+     * @param projectPath
+     * @param commandExecutor
+     * @param forceCheckout
+     */
     static void gitCheckout(String target, String projectPath, CommandExecutor commandExecutor, boolean forceCheckout) {
         gitCheckout(target, forceCheckout ? CHECKOUT_OPTION_FORCE : "", projectPath, commandExecutor);
     }
 
-
+    /**
+     *
+     * @param target
+     * @param checkoutOptions
+     * @param projectPath
+     * @param commandExecutor
+     */
     static void gitCheckout(String target, String checkoutOptions, String projectPath, CommandExecutor commandExecutor) {
 
         String gitOptions = GIT_OPTION_PATH + projectPath;
@@ -254,7 +359,12 @@ class GitUtils implements Git {
 //        System.out.println("Standard error:\n" + String.join("\n", commandExecutor.getStandardError()));
     }
 
-
+    /**
+     *
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static List<String> getCommitsHashList(String projectPath, CommandExecutor commandExecutor) {
         String gitOptions = GIT_OPTION_NO_PAGER + GIT_OPTION_PATH + projectPath;
 
@@ -270,7 +380,13 @@ class GitUtils implements Git {
         return commandExecutor.getStandardOutput();
     }
 
-
+    /**
+     *
+     * @param commit
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static String getCommitHash(String commit, String projectPath, CommandExecutor commandExecutor) {
 
         if (commit.length() == 0) return "";
@@ -290,7 +406,14 @@ class GitUtils implements Git {
         return commandExecutor.getStandardOutput().get(0);
     }
 
-
+    /**
+     *
+     * @param currentCommitHash
+     * @param parentCommitHash
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static List<String> gitDiffNameStatus(String currentCommitHash, String parentCommitHash,
                                           String projectPath, CommandExecutor commandExecutor) {
 
@@ -316,6 +439,16 @@ class GitUtils implements Git {
         return commandExecutor.getStandardOutput();
     }
 
+    /**
+     *
+     * @param changedFile
+     * @param newFile
+     * @param currentCommitHash
+     * @param parentCommitHash
+     * @param projectPath
+     * @param commandExecutor
+     * @return
+     */
     static List<String> gitDiff(String changedFile, String newFile,
                                 String currentCommitHash, String parentCommitHash,
                                 String projectPath, CommandExecutor commandExecutor) {
@@ -339,6 +472,16 @@ class GitUtils implements Git {
         return commandExecutor.getStandardOutput();
     }
 
+    /**
+     *
+     * @param gitOptions
+     * @param diffOptions
+     * @param oldCommit
+     * @param newCommit
+     * @param gitOldFile
+     * @param gitNewFile
+     * @return
+     */
     static String buildGitDiffCommand(String gitOptions, String diffOptions, String oldCommit,
                                       String newCommit, String gitOldFile, String gitNewFile) {
 

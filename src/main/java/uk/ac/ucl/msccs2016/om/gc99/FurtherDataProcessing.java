@@ -14,9 +14,15 @@ import static uk.ac.ucl.msccs2016.om.gc99.MainWorker.formatPitMatrixOutput;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.paddingSpaces;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.zipFileInputStream;
 
-
+/**
+ *
+ */
 public class FurtherDataProcessing implements Worker {
-
+    /**
+     *
+     * @param args
+     * @throws IOException
+     */
     public static void main(String[] args) throws IOException {
         String directory = args[0];
 
@@ -50,12 +56,18 @@ public class FurtherDataProcessing implements Worker {
 
     private List<String> matrixFiles;
 
-
+    /**
+     *
+     */
     private FurtherDataProcessing() {
         jsonHandler = new JSONHandler(true);
     }
 
-
+    /**
+     *
+     * @param directory
+     * @param allCommits
+     */
     private void countCommitsChangeType(String directory, boolean allCommits) {
 
         if (!allCommits) {
@@ -345,7 +357,11 @@ public class FurtherDataProcessing implements Worker {
         System.out.println(commitsChangeTypeOutput);
     }
 
-
+    /**
+     *
+     * @param diffFile
+     * @param allCommits
+     */
     private void checkDiff(String diffFile, boolean allCommits) {
 
         DiffOutput diffOutput = new DiffOutput();
@@ -384,7 +400,11 @@ public class FurtherDataProcessing implements Worker {
         }
     }
 
-
+    /**
+     *
+     * @param matrixFile
+     * @return
+     */
     private boolean changesOnlyInTimedOutMutationTests_Mtx(String matrixFile) {
         MatrixOutput matrixOutput = new MatrixOutput();
         try {
@@ -401,7 +421,11 @@ public class FurtherDataProcessing implements Worker {
         return true;
     }
 
-
+    /**
+     *
+     * @param pitChangeFile
+     * @return
+     */
     private boolean changesOnlyInTimedOutMutationTests_Chg(String pitChangeFile) {
 
         ChangedMutations changedMutations = new ChangedMutations();
@@ -443,7 +467,11 @@ public class FurtherDataProcessing implements Worker {
         return true;
     }
 
-
+    /**
+     *
+     * @param mutatedFiles
+     * @return
+     */
     private boolean allChangedFromTimedOutParent(HashMap<String, MutatedFile> mutatedFiles) {
 
         for (Map.Entry<String, MutatedFile> fileEntry :
@@ -465,7 +493,10 @@ public class FurtherDataProcessing implements Worker {
         return true;
     }
 
-
+    /**
+     *
+     * @param directory
+     */
     private void listSkippedOutput(String directory) {
 
         List<String> diffCommits = new ArrayList<>();
@@ -562,7 +593,11 @@ public class FurtherDataProcessing implements Worker {
         System.out.println();
     }
 
-
+    /**
+     *
+     * @param directory
+     * @return
+     */
     private List<String> getMatrixFiles(String directory) {
 
         List<String> matrixFiles = new ArrayList<>();
@@ -581,6 +616,10 @@ public class FurtherDataProcessing implements Worker {
 
     }
 
+    /**
+     *
+     * @param directory
+     */
     private void addMatrices(String directory) {
 
         if (matrixFiles == null) matrixFiles = getMatrixFiles(directory);
@@ -985,7 +1024,10 @@ public class FurtherDataProcessing implements Worker {
         System.out.println(matrixSummationStatisticsOutput);
     }
 
-
+    /**
+     *
+     * @param directory
+     */
     private void createSeries(String directory) {
         if (matrixFiles == null) matrixFiles = getMatrixFiles(directory);
 
@@ -1208,9 +1250,13 @@ public class FurtherDataProcessing implements Worker {
         }
 
         System.out.println(seriesOutputString);
-
     }
 
+    /**
+     *
+     * @param outputFileName
+     * @return
+     */
     private static String getCommit(String outputFileName) {
         return outputFileName.substring(outputFileName.lastIndexOf("-") + 1, outputFileName.lastIndexOf("."));
     }

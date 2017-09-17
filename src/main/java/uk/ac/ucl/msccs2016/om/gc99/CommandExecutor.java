@@ -4,11 +4,17 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ *
+ */
 class CommandExecutor {
     private List<String> splitCommand;
     private boolean printCommand;
     private ThreadedStreamHandler inputStreamHandler, errorStreamHandler;
 
+    /**
+     *
+     */
     CommandExecutor() {
         this.splitCommand = null;
     }
@@ -58,6 +64,7 @@ class CommandExecutor {
     }
 
     /**
+     *
      * @return
      */
     private int execute() {

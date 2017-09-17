@@ -2,6 +2,9 @@ package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.util.HashMap;
 
+/**
+ *
+ */
 class ChangedMutations {
 
     String currentCommitHash, parentCommitHash;
@@ -15,10 +18,18 @@ class ChangedMutations {
     HashMap<String, MutatedFile> memoryErrorMutations;
     HashMap<String, MutatedFile> runErrorMutations;
 
+    /**
+     *
+     */
     ChangedMutations(){
 
     }
 
+    /**
+     *
+     * @param currentCommitHash
+     * @param parentCommitHash
+     */
     ChangedMutations(String currentCommitHash, String parentCommitHash){
         this.currentCommitHash = currentCommitHash;
         this.parentCommitHash = parentCommitHash;

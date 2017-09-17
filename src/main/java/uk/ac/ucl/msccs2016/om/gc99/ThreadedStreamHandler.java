@@ -7,15 +7,25 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ *
+ */
 class ThreadedStreamHandler extends Thread {
     private InputStream inputStream;
     private List<String> outputBuffer;
 
+    /**
+     *
+     * @param inputStream
+     */
     ThreadedStreamHandler(InputStream inputStream) {
         this.inputStream = inputStream;
         this.outputBuffer = new ArrayList<>();
     }
 
+    /**
+     *
+     */
     public void run() {
 
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
@@ -37,6 +47,10 @@ class ThreadedStreamHandler extends Thread {
         }
     }
 
+    /**
+     *
+     * @return
+     */
     List<String> getOutputBuffer() {
         return outputBuffer;
     }
