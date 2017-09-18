@@ -1,9 +1,34 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
-// Loosely based on System Utils class of Apache Commons Lang library
-
 /**
- *
+ * Centralised location for constant string values that are used
+ * throughout the classes that implement this interface.
+ * <p>
+ * <b>References:</b><br>
+ * Loosely based on the source code of the System Utils class of Apache Commons Lang library.
+ * [Online]. Available: <a href="https://github.com/apache/commons-lang/blob/master/src/main/java/org/apache/commons/lang3/SystemUtils.java" target="_blank">
+ * https://github.com/apache/commons-lang/blob/master/src/main/java/org/apache/commons/lang3/SystemUtils.java</a>
  */
 interface OS {
     String OS_NAME = System.getProperty("os.name").toLowerCase();

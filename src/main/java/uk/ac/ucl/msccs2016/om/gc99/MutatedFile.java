@@ -1,3 +1,24 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.util.ArrayList;
@@ -5,7 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 
 /**
- *
+ * Utility class - represents a machine readable individual mutated file entry.
  */
 class MutatedFile {
 
@@ -20,7 +41,7 @@ class MutatedFile {
     }
 
     /**
-     *
+     * Utility class - represents a machine readable individual class entry.
      */
     static class MutatedClass {
         HashMap<String, MutatedMethod> mutatedMethods;
@@ -41,7 +62,7 @@ class MutatedFile {
         List<Mutation> mutations;
 
         /**
-         *
+         * Utiltity class - represents a machine readable individual method entry.
          */
         MutatedMethod() {
             mutations = new ArrayList<>();
@@ -53,7 +74,7 @@ class MutatedFile {
      */
     static class Mutation {
         /**
-         *
+         * Utility class - represents a machine readable individual mutation entry.
          */
         static class MutationData {
             Boolean detected;
@@ -63,7 +84,6 @@ class MutatedFile {
             KillingTest killingTest;
 
             /**
-             *
              * @return
              */
             MutationData getClone() {
@@ -82,7 +102,6 @@ class MutatedFile {
         }
 
         /**
-         *
          * @param m
          */
         Mutation(Mutation m) {
@@ -95,7 +114,6 @@ class MutatedFile {
         }
 
         /**
-         *
          * @return
          */
         Mutation getClone() {
@@ -108,7 +126,7 @@ class MutatedFile {
      */
     static class KillingTest {
         /**
-         *
+         * Utility class - represents a machine readable individual killing test entry.
          */
         class TestFile {
             String fileName, testMethod, diffStatus, fileName_old, testMethod_old;
@@ -154,7 +172,6 @@ class MutatedFile {
         }
 
         /**
-         *
          * @param initTestFile
          */
         KillingTest(boolean initTestFile) {

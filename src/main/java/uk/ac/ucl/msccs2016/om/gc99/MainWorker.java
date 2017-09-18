@@ -1,3 +1,24 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
 import org.apache.maven.shared.invoker.DefaultInvocationRequest;
@@ -41,7 +62,13 @@ import static uk.ac.ucl.msccs2016.om.gc99.Utils.getNameOnly;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.paddingSpaces;
 
 /**
- *
+ * Main worker class of the application - comprises doWork(), the business logic method,
+ * as well as the primary utility methods.
+ * <p>
+ * <b>References &amp; libraries:</b><br>
+ * Apache Maven Invoker.
+ * [Online]. Available: <a href="https://maven.apache.org/shared/maven-invoker/" target="_blank">
+ * https://maven.apache.org/shared/maven-invoker/</a>
  */
 class MainWorker implements Worker {
 
@@ -80,18 +107,23 @@ class MainWorker implements Worker {
     private DiffOutput childDiffOutput, currentDiffOutput;
 
     /**
-     *
-     * @param projectPath
-     * @param pitStatReportsPath
-     * @param pitStatReportsPathRelative
-     * @param createTimestampDirectory
-     * @param noHuman
-     * @param zipOutput
-     * @param noMachine
-     * @param startCommit
-     * @param endCommit
-     * @param maxRollbacks
-     * @param threadsNo
+     * @param projectPath                String, holds the path of the target project
+     * @param pitStatReportsPath         String, holds the paths where the PitStat reports will be saved
+     * @param pitStatReportsPathRelative boolean, records whether the path for the PitStat reports is absolute
+     *                                   or relative to the project path (true if path is relative)
+     * @param createTimestampDirectory   boolean, records whether the PitStat reports are to be placed into a
+     *                                   timestamped subdirectory (true is timestamp directory is to be created)
+     * @param noHuman                    boolean, records whether human readable output should be created (false
+     *                                   if human readable output is to be created)
+     * @param zipOutput                  boolean, records whether machine readable output is to be saver as zip
+     *                                   compressed archive
+     * @param noMachine                  boolean, records whether machine readable output is to be created; only
+     *                                   relevant where both human and machine readable output is available (false
+     *                                   if machine readable output is to be created)
+     * @param startCommit                String, holds the hash string of the start commit (most recent)
+     * @param endCommit                  String, holds the hash string of the end commit (oldest)
+     * @param maxRollbacks               int, holds the number of rollback to be performed
+     * @param threadsNo                  int, holds the number of threads that will be passed to PIT
      * @throws Exception
      */
     MainWorker(String projectPath,
@@ -143,6 +175,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Primary Business Logic Method.
      *
      * @throws Exception
      */
@@ -303,6 +336,8 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility method - executes a maven clean goal on the target project
+     * (deletes the target project build folder and all of its contents).
      *
      * @throws Exception
      */
@@ -325,7 +360,8 @@ class MainWorker implements Worker {
     }
 
     /**
-     *
+     * Utility method - checks if the user entered boundary commits are valid.<br>
+     * Note: This methods is used also when the user enters the number of rollbacks, thus no end commit.
      */
     private void validateBoundaryCommits() {
 
@@ -411,6 +447,8 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Primary Utility Method - business logic used to record file differences between
+     * subsequent commits and generate the mapping between the new and the old commit.
      *
      * @throws IOException
      */
@@ -512,7 +550,6 @@ class MainWorker implements Worker {
 
                 } else if ((DIFF_STATUS_MODIFIED + DIFF_STATUS_RENAMED).contains(diffStatus)) {
 
-//                    List<String> mapFileLines = Files.readAllLines(Paths.get(projectPath, newFile), StandardCharsets.ISO_8859_1);
                     List<String> mapFileLines = Utils.readAllLines(Paths.get(projectPath, newFile));
 
                     mapFileLines.add(0, null);
@@ -577,9 +614,6 @@ class MainWorker implements Worker {
                             diffNewPointer = Integer.valueOf(split[2]);
                             diffNewLinesNo = Integer.valueOf(split[3]);
 
-                            // actualNewPointer keeps track of the starting location of changed lines in the map file
-                            // lifeOffset ???
-                            // TODO remember how this works and add full comments
                             // there seems to be an inconsistency in the way git diff reports the addition of a single line
                             // and the pointer to the new line, i.e. if a single line is added it actually reports zero
                             // lines and the pointer is one line behind; the following line of code adjusts the line
@@ -645,8 +679,8 @@ class MainWorker implements Worker {
                             newFileLinePointer++;
 
                         } else {
-                            // For a copied file git diff also outputs a few lines with details about the source of the
-                            // copy; we don't need this information so we stop parsing and skip over it
+                            // For a copied file git diff also outputs a few lines with details about the source
+                            // of the copy; we don't need this information so we stop parsing and skip over it
                             break;
                         }
                     }
@@ -723,6 +757,7 @@ class MainWorker implements Worker {
 
         currentDiffOutput = new DiffOutput(hashToOutput(currentCommitHash), hashToOutput(parentCommitHash), changedFiles);
 
+        // The next line of comment tells IntelliJ to ignore code duplicates in the subsequent block
         //noinspection Duplicates
         if (machineOutput) {
             // Write git diff machine readable output file
@@ -735,9 +770,10 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility method - formats the human readable record of file changes between commits.
      *
-     * @param mapFileLines
-     * @return
+     * @param mapFileLines List&lt;String&gt;, holds the line mapping between the new and the old commit.
+     * @return returns a String containing the formatted output.
      */
     private String formatDiffMapOutput(List<String> mapFileLines) {
 
@@ -791,6 +827,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Primary Utility Method - business logic for PIT mutation testing and recording of results.
      *
      * @throws Exception
      */
@@ -960,6 +997,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility method - used to parse killing test with no method name output by PIT
      *
      * @param killingTestElement
      * @return
@@ -975,6 +1013,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Primary Utility Method - topmost level business logic used to generate the PIT results change matrix
      *
      * @throws IOException
      */
@@ -1034,6 +1073,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Primary Utility Method - high level business logic for the PIT results change matrix
      *
      * @param childCommitHash
      * @param currentCommitHash
@@ -1092,6 +1132,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Primary Utility Method - low level logic for the PIT results change matrix
      *
      * @param childPitOutput
      * @param childCommitHash
@@ -1290,6 +1331,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Primary Utility Method - low level business logic that adds changed mutation to changed mutations record.
      *
      * @param newCommitHash
      * @param oldCommitHash
@@ -1436,7 +1478,127 @@ class MainWorker implements Worker {
         if (isNewMutatedFile) mutatedFiles.put(newFileName, mutatedFile);
     }
 
+
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+// NOTE: Former lines 1499 - 1513 have been offset due to addition of JavaDoc and other comments.
+//       The new corresponding line numbers are 1747 - 1767
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+// NOTE: Former line number 1521 has been offset due to addition of JavaDoc and other comments.
+//       The new corresponding line number is 1785
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+// NOTE: Former line number 1542 has been offset due to addition of JavaDoc and other comments. The new line number corresponding to the old 1542 is now 1784
+// NOTE: Former line number 1543 has been offset due to addition of JavaDoc and other comments. The new line number corresponding to the old 1543 is now 1785
+//
+// NOTE: Former line numbers 1545 - 1576 have been offset due to addition of JavaDoc and other comments.
+//       The line range correspondence is as follows: OLD 1545 - 1571 corresponds to NEW 1809 - 1835
+//                                                    OLD 1576 corresponds to NEW 1840
+//                                                    OLD 1545 - 1566 corresponds to NEW 1809 - 1830
+//                                                    OLD 1571 - 1576 corresponds to NEW 1835 - 1840
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+// NOTE: Former line numbers 1566 has been offset due to addition of JavaDoc and other comments.
+// See comments above for new line correspondence.
+//
+//
+//
+// NOTE: Former line numbers 1571 has been offset due to addition of JavaDoc and other comments.
+// See comments above for new line correspondence.
+//
+//
+//
+// NOTE: Former line numbers 1576 has been offset due to addition of JavaDoc and other comments. See comments above for new line correspondence.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     /**
+     * Utility method - returns the relevant changed mutations hash map based
+     * on the outcome of the changed mutation in the current commit.
      *
      * @param mutationStatus
      * @return
@@ -1474,6 +1636,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility method - formats the human readable output for the PIT results change matrix
      *
      * @param pitMatrix
      * @param maxValue
@@ -1555,6 +1718,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility matrix - returns the relevant row/column number based on the mutation status.
      *
      * @param status
      * @return
@@ -1581,7 +1745,7 @@ class MainWorker implements Worker {
 
 
 //    /**
-//     * Fix UTF-8 error in pom.xml file for commons-dbutils
+//     * WORKAROUND METHOD - Fix UTF-8 error in pom.xml file for commons-dbutils
 //     *
 //     * @param corruptedPom
 //     * @throws IOException
@@ -1603,6 +1767,7 @@ class MainWorker implements Worker {
 //    }
 
     /**
+     * Primary Utility Method - business logic to create the temporary POM filex.
      *
      * @param repoPath
      * @param pomFile
@@ -1616,7 +1781,7 @@ class MainWorker implements Worker {
 
         File repositoryPom = new File(Paths.get(repoPath, pomFile).toString());
 
-        // Fix UTF-8 error in pom.xml file for commons-dbutils
+        // Fix UTF-8 error in pom.xml file for Commons-DBUtils
 //        fixUTF_in_commons_dbutils_pom(repositoryPom);
 
         Document xmlDoc = documentBuilder.parse(repositoryPom);
@@ -1663,12 +1828,12 @@ class MainWorker implements Worker {
 //                        configuration.appendChild(excludes);
 //                    }
 //
-//                    // Exclude failing test for jfreechart
+//                    // Exclude failing test for JFreeChart
 //                    Element exclude = xmlDoc.createElement("exclude");
 //                    exclude.appendChild(xmlDoc.createTextNode("**/TimeSeriesCollectionTest*"));
 //                    excludes.appendChild(exclude);
 //
-//                    // Exclude failing test for commons-dbutils from commit da0135a53a7e23fee525cd3865c35b6d83e24dab
+//                    // Exclude failing test for Commons-DBUtils from commit da0135a53a7e23fee525cd3865c35b6d83e24dab onwards
 //                    Element exclude = xmlDoc.createElement("exclude");
 //                    exclude.appendChild(xmlDoc.createTextNode("**/TestBean.java"));
 //                    excludes.appendChild(exclude);
@@ -1698,6 +1863,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility method - generates the PIT plugin XML element that needs to be injected into the temporary POM file
      *
      * @param xmlDoc
      * @return
@@ -1734,6 +1900,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility method - generated commit text for staged and unstaged changes as these do not have a commit hash
      *
      * @param commitHash
      * @return
@@ -1743,6 +1910,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility method - generated commit text for staged and unstaged changes as these do not have a commit hash
      *
      * @param commitHash
      * @param longOutput
@@ -1758,6 +1926,7 @@ class MainWorker implements Worker {
     }
 
     /**
+     * Utility method - generates filename for staged and unstaged changes as these do not have a commit hash
      *
      * @param commitHash
      * @return

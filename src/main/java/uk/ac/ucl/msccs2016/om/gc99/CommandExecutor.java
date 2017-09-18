@@ -1,3 +1,24 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.io.IOException;
@@ -5,7 +26,18 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- *
+ * Primary Utility Class used to execute an external command.
+ * <p>
+ * <b>References:</b><br>
+ * A. Alexander, 'Java exec - execute system processes with Java ProcessBuilder and Process (part 1)'.
+ * [Online]. Available: <a href="https://alvinalexander.com/java/java-exec-processbuilder-process-1" target="_blank">
+ * https://alvinalexander.com/java/java-exec-processbuilder-process-1 </a><br>
+ * A. Alexander, 'Java exec - execute system processes with Java ProcessBuilder and Process (part 2)'.
+ * [Online]. Available: <a href="https://alvinalexander.com/java/java-exec-processbuilder-process-2" target="_blank">
+ * https://alvinalexander.com/java/java-exec-processbuilder-process-1 </a><br>
+ * A. Alexander, 'Java exec - execute system processes with Java ProcessBuilder and Process (part 3)'.
+ * [Online]. Available: <a href="https://alvinalexander.com/java/java-exec-processbuilder-process-3" target="_blank">
+ * https://alvinalexander.com/java/java-exec-processbuilder-process-1 </a><br>
  */
 class CommandExecutor {
     private List<String> splitCommand;
@@ -64,7 +96,6 @@ class CommandExecutor {
     }
 
     /**
-     *
      * @return
      */
     private int execute() {

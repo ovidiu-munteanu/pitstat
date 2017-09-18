@@ -1,7 +1,40 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
 /**
- *
+ * Centralised location for constant string values that are used
+ * throughout the classes that implement this interface.
+ * <p>
+ * <b>References:</b><br>
+ * ANSI colour codes from Stack Overflow post by WhiteFang34, later edited by Bob Jones.
+ * [Online]. Available: <a href="https://stackoverflow.com/a/5762502/8065825" target="_blank">
+ * https://stackoverflow.com/a/5762502/8065825</a><br>
+ * <br>
+ * <b>Additional resources:</b><br>
+ * Maven - Installing Apache Maven.
+ * [Online]. Available: <a href="https://maven.apache.org/install.html" target="_blank">https://maven.apache.org/install.html</a><br>
+ * Pit Mutation Testing - Quickstart for maven users.
+ * [Online]. Available: <a href="http://pitest.org/quickstart/maven/" target="_blank">http://pitest.org/quickstart/maven/</a><br>
  */
 interface Worker {
 
@@ -91,8 +124,8 @@ interface Worker {
             "       T/O  ",
             "       M/E  ",
             "       R/E  ",
-          "\nNew commit\n" +
-            "    Totals  "};
+            "\nNew commit\n" +
+                    "    Totals  "};
 
     String DIFF_STATUS_ADDED = "A";
     String DIFF_STATUS_DELETED = "D";

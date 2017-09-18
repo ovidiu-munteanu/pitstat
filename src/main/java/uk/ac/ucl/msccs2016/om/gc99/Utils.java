@@ -1,3 +1,24 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.io.BufferedOutputStream;
@@ -26,12 +47,11 @@ import static uk.ac.ucl.msccs2016.om.gc99.Worker.ZIP_EXTENSION;
 import static uk.ac.ucl.msccs2016.om.gc99.Worker.TEMP_DIRECTORY;
 
 /**
- *
+ * Primary Utiltity Class - implements a set of utility classes used throughout other classes.
  */
 class Utils {
 
     /**
-     *
      * @param pitStatReportsPath
      * @param pitStatReportsPathRelative
      * @param startTime
@@ -67,7 +87,6 @@ class Utils {
     }
 
     /**
-     *
      * @return
      */
     static List<String> listTempFiles() {
@@ -75,7 +94,6 @@ class Utils {
     }
 
     /**
-     *
      * @param directory
      * @return
      */
@@ -91,7 +109,6 @@ class Utils {
     }
 
     /**
-     *
      * @param oldTempFiles
      */
     static void deleteNewTempFiles(List<String> oldTempFiles) {
@@ -114,7 +131,6 @@ class Utils {
     }
 
     /**
-     *
      * @param outputPath
      * @param commitHash
      * @param o
@@ -126,7 +142,6 @@ class Utils {
     }
 
     /**
-     *
      * @param outputPath
      * @param commitHash
      * @param o
@@ -138,7 +153,6 @@ class Utils {
     }
 
     /**
-     *
      * @param outputPath
      * @param commitHash
      * @param o
@@ -150,7 +164,6 @@ class Utils {
     }
 
     /**
-     *
      * @param outputPath
      * @param commitHash
      * @param outputType
@@ -172,7 +185,6 @@ class Utils {
     }
 
     /**
-     *
      * @param rootPath
      * @param zipFileName
      * @return
@@ -183,7 +195,6 @@ class Utils {
     }
 
     /**
-     *
      * @param qualifiedFileName
      * @return
      * @throws IOException
@@ -199,7 +210,6 @@ class Utils {
     }
 
     /**
-     *
      * @param object
      * @param filename
      * @param outputPath
@@ -208,7 +218,7 @@ class Utils {
      * @throws IOException
      */
     static void saveMachineOutput(Object object, String filename, String outputPath,
-                                   boolean zipOutput, JSONHandler jsonHandler) throws IOException {
+                                  boolean zipOutput, JSONHandler jsonHandler) throws IOException {
         if (zipOutput) {
             OutputStream outputStream = Utils.zipFileOutputStream(outputPath, filename);
             jsonHandler.saveToJSON(object, outputStream);
@@ -219,7 +229,6 @@ class Utils {
     }
 
     /**
-     *
      * @param rootPath
      * @param sourceFile
      * @return
@@ -237,7 +246,6 @@ class Utils {
     }
 
     /**
-     *
      * @param commit
      * @param type
      * @param directory
@@ -257,7 +265,6 @@ class Utils {
     }
 
     /**
-     *
      * @param directory
      * @return
      */
@@ -274,7 +281,6 @@ class Utils {
     }
 
     /**
-     *
      * @param fileName
      * @return
      */
@@ -285,7 +291,6 @@ class Utils {
     }
 
     /**
-     *
      * @param fileName
      * @return
      */
@@ -296,7 +301,6 @@ class Utils {
     }
 
     /**
-     *
      * @param projectPath
      * @param pitReportPath
      * @param pitReportPathRelative
@@ -323,7 +327,6 @@ class Utils {
     }
 
     /**
-     *
      * @param n
      * @return
      */
@@ -332,7 +335,6 @@ class Utils {
     }
 
     /**
-     *
      * @param projPath
      * @return
      */
@@ -350,7 +352,6 @@ class Utils {
     }
 
     /**
-     *
      * @param reportsPath
      * @return
      */
@@ -363,7 +364,6 @@ class Utils {
     }
 
     /**
-     *
      * @param directory
      * @return
      */
@@ -379,7 +379,6 @@ class Utils {
     }
 
     /**
-     *
      * @param resourceFile
      * @return
      */
@@ -417,6 +416,12 @@ class Utils {
     // Based on Stack Overflow post at https://stackoverflow.com/a/14297352
 
     /**
+     * Sends architecture specific system shutdown command.
+     * <p>
+     * <b>References:</b><br>
+     * Stack Overflow post by Kezz101.
+     * [Online]. Available: <a href="https://stackoverflow.com/a/14297352" target="_blank">
+     * https://stackoverflow.com/a/14297352</a>
      *
      * @param timeout
      * @return
@@ -441,7 +446,6 @@ class Utils {
     }
 
     /**
-     *
      * @param path
      * @return
      * @throws IOException
@@ -449,7 +453,7 @@ class Utils {
     static List<String> readAllLines(Path path) throws IOException {
         List<String> allLines = new ArrayList<>();
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(Files.newInputStream(path)));
-        while(bufferedReader.ready()){
+        while (bufferedReader.ready()) {
             allLines.add(bufferedReader.readLine());
         }
         bufferedReader.close();

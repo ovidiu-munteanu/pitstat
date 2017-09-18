@@ -1,3 +1,24 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
 import com.google.gson.Gson;
@@ -15,7 +36,16 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 /**
- *
+ * Primary Utility Class used to read/write JSON output using the Google Gson library;
+ * also used to clone objects using the same library.
+ * <p>
+ * <b>References &amp; Libraries:</b><br>
+ * Google - Gson User Guide.
+ * [Online]. Available: <a href="https://github.com/google/gson/blob/master/UserGuide.md" target="_blank">
+ * https://github.com/google/gson/blob/master/UserGuide.md</a><br>
+ * Google - Gson Library.
+ * [Online]. Available: <a href="https://github.com/google/gson" target="_blank">
+ * https://github.com/google/gson</a>
  */
 class JSONHandler {
 
@@ -29,7 +59,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param prettyPrinting
      */
     JSONHandler(boolean prettyPrinting) {
@@ -37,7 +66,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param prettyPrinting
      */
     private void createGson(boolean prettyPrinting) {
@@ -47,7 +75,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param o
      * @param fileName
      * @throws IOException
@@ -57,7 +84,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param o
      * @param os
      * @throws IOException
@@ -69,7 +95,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param fileName
      * @param o
      * @return
@@ -80,7 +105,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param is
      * @param o
      * @return
@@ -94,7 +118,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param o
      * @return
      */
@@ -103,7 +126,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param o
      * @return
      */
@@ -112,7 +134,6 @@ class JSONHandler {
     }
 
     /**
-     *
      * @param s
      * @param o
      * @return

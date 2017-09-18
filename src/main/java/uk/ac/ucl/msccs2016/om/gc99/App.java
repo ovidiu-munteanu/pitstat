@@ -1,14 +1,34 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.security.InvalidParameterException;
 
 /**
- *
+ * Application launcher class - contains main() method.<br>
  */
 public class App {
     /**
-     *
-     * @param args
+     * @param args String[], holds the command line arguments
      * @throws Exception
      */
     public static void main(String[] args) throws Exception {
@@ -260,7 +280,7 @@ public class App {
     }
 
     /**
-     *
+     * Displays a help screen - contents are stored in help.txt file located in src/main/resources/
      */
     private static void printHelp() {
         String help = Utils.getResourceFileAsString("help.txt");
@@ -268,8 +288,10 @@ public class App {
     }
 
     /**
+     * Checks if the commit hash/reference string entered by the user as a CLI argument is of valid length.<br>
+     * A valid commit hash/reference string may be between 4 and 40 characters long.
      *
-     * @param commit
+     * @param commit String, holds the commit hash/reference entered by the user as a CLI argument
      */
     private static void checkCommitLength(String commit) {
         if (commit.length() < 4) {
@@ -284,8 +306,10 @@ public class App {
     }
 
     /**
+     * Terminates the application; the argument holds the exit status status code. <br>
+     * NOTE! Status codes have not been organized and for now are more or less meaningless.
      *
-     * @param exitCode
+     * @param exitCode int, holds the exit status code
      */
     static void systemExit(int exitCode) {
         System.out.println();

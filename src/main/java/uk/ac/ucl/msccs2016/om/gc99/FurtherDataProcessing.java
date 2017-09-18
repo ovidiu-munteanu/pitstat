@@ -1,3 +1,24 @@
+/*
+ * University College London
+ * MSc Computer Science
+ * September 2017
+ *
+ * PitStat
+ *
+ * This software is a component of the final project titled:
+ *
+ * Change Impact Analysis through Mutation Testing
+ *
+ * Author: Ovidiu Munteanu
+ * Supervisor: Jens Krinke
+ *
+ * This software is submitted as part requirement for the MSc
+ * Computer Science degree at UCL.It is substantially the result
+ * of my own work except where explicitly indicated in the code.
+ *
+ * This software may be freely copied and distributed provided
+ * the source is explicitly acknowledged.
+ */
 package uk.ac.ucl.msccs2016.om.gc99;
 
 import java.io.IOException;
@@ -15,11 +36,13 @@ import static uk.ac.ucl.msccs2016.om.gc99.Utils.paddingSpaces;
 import static uk.ac.ucl.msccs2016.om.gc99.Utils.zipFileInputStream;
 
 /**
- *
+ * STANDALONE PRIMARY CLASS used for further analysis of the data collected by PitStat.
+ * <p>
+ * This class is separate and not used by the main PitStat application.
+ * It is intended for direct manual use by the researcher.
  */
 public class FurtherDataProcessing implements Worker {
     /**
-     *
      * @param args
      * @throws IOException
      */
@@ -64,7 +87,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param directory
      * @param allCommits
      */
@@ -358,7 +380,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param diffFile
      * @param allCommits
      */
@@ -401,7 +422,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param matrixFile
      * @return
      */
@@ -422,7 +442,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param pitChangeFile
      * @return
      */
@@ -468,7 +487,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param mutatedFiles
      * @return
      */
@@ -494,7 +512,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param directory
      */
     private void listSkippedOutput(String directory) {
@@ -594,7 +611,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param directory
      * @return
      */
@@ -617,7 +633,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param directory
      */
     private void addMatrices(String directory) {
@@ -917,7 +932,6 @@ public class FurtherDataProcessing implements Worker {
                 matrixSummationStatisticsOutput.append("\n" + commit);
 
 
-
         matrixSummationStatisticsOutput.append("\n\nNEW killed       OLD timed out                  " + timedOut_Killed_commits + "\tcommits");
         if (!timedOut_Killed_commits_list.isEmpty())
             for (String commit : timedOut_Killed_commits_list) matrixSummationStatisticsOutput.append("\n" + commit);
@@ -1025,7 +1039,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param directory
      */
     private void createSeries(String directory) {
@@ -1253,7 +1266,6 @@ public class FurtherDataProcessing implements Worker {
     }
 
     /**
-     *
      * @param outputFileName
      * @return
      */
