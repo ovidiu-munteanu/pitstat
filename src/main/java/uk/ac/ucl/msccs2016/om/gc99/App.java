@@ -35,22 +35,26 @@ public class App {
 
         System.out.println();
 
-        String projectPath = "";
-        String pitStatReportsPath = "pitstat-reports";
-        boolean pitStatReportsPathRelative = true;
-        boolean createTimestampFolder = true;
-        String startCommit = "HEAD";
-        String endCommit = null;
-        int maxRollbacks = 1;
-        int threadsNo = 1;
-        int shutdownTimeout = 1;
-
-        boolean endCommitArg = false, rollbacksArg = false;
-
-        boolean noHuman = false;
-        boolean noMachine = false;
-        boolean zipOutput = false;
-        boolean shutdown = false;
+        String
+                projectPath = "",
+                pitStatReportsPath = "pitstat-reports";
+        boolean
+                pitStatReportsPathRelative = true,
+                createTimestampFolder = true;
+        String
+                startCommit = "HEAD",
+                endCommit = null;
+        int
+                maxRollbacks = 1,
+                threadsNo = 1,
+                shutdownTimeout = 1;
+        boolean
+                endCommitArg = false,
+                rollbacksArg = false,
+                noHuman = false,
+                noMachine = false,
+                zipOutput = false,
+                shutdown = false;
 
         if (args.length == 0) {
             printHelp();
@@ -253,19 +257,20 @@ public class App {
             systemExit(99);
         }
 
-        MainWorker worker = new MainWorker(
-                projectPath,
-                pitStatReportsPath,
-                pitStatReportsPathRelative,
-                createTimestampFolder,
-                noHuman,
-                zipOutput,
-                noMachine,
-                startCommit,
-                endCommit,
-                maxRollbacks,
-                threadsNo
-        );
+        MainWorker worker =
+                new MainWorker(
+                        projectPath,
+                        pitStatReportsPath,
+                        pitStatReportsPathRelative,
+                        createTimestampFolder,
+                        noHuman,
+                        zipOutput,
+                        noMachine,
+                        startCommit,
+                        endCommit,
+                        maxRollbacks,
+                        threadsNo
+                );
 
 
         worker.doWork();

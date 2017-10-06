@@ -223,8 +223,8 @@ class Utils {
             OutputStream outputStream = Utils.zipFileOutputStream(outputPath, filename);
             jsonHandler.saveToJSON(object, outputStream);
         } else {
-            String changesMachineOutputPath = Paths.get(outputPath, filename).toString();
-            jsonHandler.saveToJSON(object, changesMachineOutputPath);
+            String machineOutputPath = Paths.get(outputPath, filename).toString();
+            jsonHandler.saveToJSON(object, machineOutputPath);
         }
     }
 

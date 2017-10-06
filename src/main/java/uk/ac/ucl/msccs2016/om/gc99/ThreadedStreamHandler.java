@@ -86,12 +86,3 @@ class ThreadedStreamHandler extends Thread {
         return outputBuffer;
     }
 }
-
-
-
-
-
-
-
-
-
