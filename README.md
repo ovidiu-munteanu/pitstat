@@ -1,5 +1,5 @@
 # Change Impact Analysis through Mutation Testing
-### Final Project, MSc Computer Science, UCL
+### Final Project, MSc Computer Science, UCL (September 2017)
 
 ## Abstract
    
